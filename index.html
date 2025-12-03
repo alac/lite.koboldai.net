@@ -15259,14 +15259,30 @@ Current version indicated by LITEVER below.
 			truncated_context = truncated_memory + truncated_context.substring(excess_len);
 
 			let long_story = (truncated_context.length>1800?true:false);
-			truncated_context += "\n### Instruction:Summarize the above text in a single paragraph of up to "+(long_story?"ten":"five")+" detailed sentences.\n### Response:";
+			truncated_context += `\n### Instruction:
+[OOC: Pause the roleplay.
+Provide a chronological summary of the events in the text above. Focus on what the events do to relationships between characters and themselves.
+
+The format of the summary should be:
+### DAY
+-- Morning --
+- EVENT
+-- School --
+- EVENT
+-- After School --
+- EVENT
+
+List events in the order they happened.
+Describe each event in one or more FULL SENTENCES.
+Be specific and avoid euphemisms/figures of speech.]
+### Response:`;
 			truncated_context = replace_placeholders(truncated_context);
 			let submit_payload = {
 			"prompt": truncated_context,
 			"params": {
 				"n": 1,
 				"max_context_length": localsettings.max_context_length,
-				"max_length": (long_story?250:200),
+				"max_length": localsettings.max_length,
 				"rep_pen": localsettings.rep_pen,
 				"temperature": localsettings.temperature,
 				"top_p": localsettings.top_p,
