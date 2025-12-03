@@ -15372,38 +15372,35 @@ Be specific and avoid euphemisms/figures of speech.]
 	{
 		retry_in_progress = false;
 		waiting_for_tool_call = 0;
+		
+		// Basic cleanup
 		gentxt = gentxt.trim();
-		gentxt = gentxt.split("###")[0];
-		gentxt = replaceAll(gentxt,"\n\n","\n");
-		let gtar = gentxt.split("\n");
-
-		gentxt = gtar[0];
-		let deslen = 200; //deal with point form response
-		if(gentxt.length<100 && gtar.length>1)
-		{
-			for(var k=1;k<gtar.length;++k)
-			{
-				deslen -= gtar[k].length;
-				if(gtar[k].trim().length>5)
-				{
-					gentxt += "\n"+gtar[k];
-				}
-				if(deslen<=0)
-				{
-					break;
+		
+		// REMOVED: gentxt = gentxt.split("###")[0]; // This was deleting markdown headers
+		// REMOVED: logic that only grabs gtar[0] (the first line)
+		
+		// Optional: Clean up common "Chatty" AI starts like "Sure, here is the summary:"
+		let prefixes = ["Sure,", "Here is", "Certainly", "The summary is"];
+		for(let p of prefixes) {
+			if(gentxt.startsWith(p)) {
+				let firstNewline = gentxt.indexOf("\n");
+				if(firstNewline > -1) {
+					gentxt = gentxt.substring(firstNewline).trim();
 				}
 			}
 		}
 
-		//clean up text
-		gentxt = end_trim_to_sentence(gentxt,true);
+		// Update the UI
 		if(temp_automem_store.trim()=="")
 		{
-			document.getElementById("memorytext").value = "[Summary: "+gentxt+"]";
+			// If memory was empty, wrap it in brackets (standard KAI format)
+			// You can remove the brackets if you prefer raw text
+			document.getElementById("memorytext").value = "[Summary:\n"+gentxt+"\n]";
 		}
 		else
 		{
-			document.getElementById("memorytext").value = temp_automem_store + "\n\n[Summary Continued: "+gentxt+"]";
+			// If appending to existing memory
+			document.getElementById("memorytext").value = temp_automem_store + "\n\n" + gentxt;
 		}
 	}
 
