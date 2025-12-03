@@ -3751,6 +3751,7 @@ Current version indicated by LITEVER below.
 		saved_comfy_url: default_comfy_base,
 		saved_xtts_url: default_xtts_base,
 		saved_alltalk_url: default_alltalk_base,
+		favorite_models: [],
 		prev_custom_endpoint_type: 0, //show a reconnect box to custom endpoint if needed. 0 is horde, otherwise its dropdown value+1
 		prev_custom_endpoint_model: "", //we may not be able to match, but set it if we do
 		prev_custom_endpoint_ischatcmpl: true,
@@ -11609,27 +11610,63 @@ Current version indicated by LITEVER below.
 			dropdown.remove(option);
 		}
 		let selidx = 0;
-		let sortedarr = [];
+		
+		let favorites = [];
+		let others = [];
+		
 		for(var i = 0; i < data.data.length; i++) {
-			var opt = data.data[i];
-			sortedarr.push(opt.id);
-		}
-		sortedarr.sort();
-		for(var i=0;i<sortedarr.length;++i)
-		{
-			var el = document.createElement("option");
-			el.textContent = sortedarr[i];
-			el.value = sortedarr[i];
-			if(localsettings.prev_custom_endpoint_model && sortedarr[i]==localsettings.prev_custom_endpoint_model)
-			{
-				selidx = i;
-				document.getElementById("useoaichatcompl").checked = localsettings.prev_custom_endpoint_ischatcmpl;
+			var mid = data.data[i].id;
+			if(localsettings.favorite_models.includes(mid)) {
+				favorites.push(mid);
+			} else {
+				others.push(mid);
 			}
-			dropdown.appendChild(el);
 		}
+
+		favorites.sort();
+		others.sort();
+
+		let appendOpts = (list, isFav) => {
+			for(var i=0; i<list.length; ++i) {
+				var el = document.createElement("option");
+				el.textContent = (isFav ? "★ " : "") + list[i]; 
+				el.value = list[i];
+				if(localsettings.prev_custom_endpoint_model && list[i]==localsettings.prev_custom_endpoint_model)
+				{
+					selidx = dropdown.options.length; // Update index based on current length
+					document.getElementById("useoaichatcompl").checked = localsettings.prev_custom_endpoint_ischatcmpl;
+				}
+				dropdown.appendChild(el);
+			}
+		}
+
+		appendOpts(favorites, true);
+		appendOpts(others, false);
+
 		dropdown.appendChild(lastOption);
 		dropdown.selectedIndex = selidx;
 		oai_model_change(true);
+	}
+	function toggle_fav_model() {
+		let dropdown = get_custom_ep_model_dropdown();
+		let val = dropdown.value;
+
+		if(!val || val == "custom") return;
+
+		let index = localsettings.favorite_models.indexOf(val);
+		
+		if (index !== -1) {
+			localsettings.favorite_models.splice(index, 1);
+		} else {
+			localsettings.favorite_models.push(val);
+		}
+		
+		autosave(); 
+
+		if(cached_oai_model_list_data) {
+			localsettings.prev_custom_endpoint_model = val; 
+			update_oai_model_list(cached_oai_model_list_data, dropdown);
+		}
 	}
 	function oai_fetch_models()
 	{
@@ -11679,6 +11716,8 @@ Current version indicated by LITEVER below.
 				console.log("together.xyz workaround hack");
 				data = { "data": data }; //fix for their bad format
 			}
+
+			cached_oai_model_list_data = data;
 
 			if (!data.error && data.data && data.data.length > 0)
 			{
@@ -11914,6 +11953,7 @@ Current version indicated by LITEVER below.
 	}
 
 	var allow_update_kobold_model_display_timestamp = performance.now() + 60000;
+	var cached_oai_model_list_data = null;
 	function update_custom_kobold_endpoint_model_display(forceupdate=false)
 	{
 		if(custom_kobold_endpoint!="" && selected_workers.length==0 && selected_models.length==1)
@@ -28218,6 +28258,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				<option style="display:none;" class="custom_model_option" value="custom">[Custom]</option>
 				</select>
 				<button type="button" class="btn btn-primary" style="display:inline;width:105px;" id="oaifetchlist" onclick="oai_fetch_models()">Fetch List</button>
+				<button type="button" class="btn btn-primary" style="display:inline;width:40px;" title="Toggle Favorite on selected model" onclick="toggle_fav_model()">★</button>
 				<button type="button" class="btn btn-primary" style="display:inline;width:105px;" id="oaiusecustom" onclick="select_custom_oai_model()">Use Custom</button>
 				<div class="hidden" id="oaiemulatecompletionsbox">
 					<div><input type="checkbox" id="oaiemulatecompletions" title="Emulate Completions with Prefill">
