@@ -2502,6 +2502,37 @@ Current version indicated by LITEVER below.
 		}
 	}
 
+	/* Edit Last message button */
+	#edit_last_overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: var(--theme_color_bg);
+		z-index: 20000;
+		display: flex;
+		flex-direction: column;
+		padding: 10px;
+	}
+	#edit_last_header {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 10px;
+		flex-shrink: 0;
+	}
+	#edit_last_textarea {
+		width: 100%;
+		flex-grow: 1;
+		resize: none;
+		font-size: 16px; /* Prevents iOS zoom on focus */
+		padding: 10px;
+		box-sizing: border-box;
+		background-color: var(--theme_color_input_bg);
+		color: var(--theme_color_input_text);
+		border: 1px solid var(--theme_color_border);
+	}
+
 	/* Printer friendly view */
 	@media print {
 		#inputrow, #actionmenu, #actionmenu2,.topmenu,.lastreq,.corpolastreq,.cht_inp_hold_outer,.corpo_chat_outer,.corpo_leftpanel_open
@@ -3713,6 +3744,7 @@ Current version indicated by LITEVER below.
 	var websearch_in_progress = false;
 	var kcpp_tts_json = "";
 	var avoidwelcome = false;
+	var edit_save_count = 1; // Tracks how many messages we are currently editing
 
 	var localsettings = {
 		my_api_key: "0000000000", //put here so it can be saved and loaded in persistent mode
@@ -5307,6 +5339,82 @@ Current version indicated by LITEVER below.
 			inputtxt = replace_noninstruct_placeholders(inputtxt,escape,isgametext,null);
 		}
 		return inputtxt;
+	}
+
+	function show_edit_last() {
+		if (gametext_arr.length === 0) return;
+
+		const select = document.getElementById("edit_count_select");
+		const maxChunks = Math.min(gametext_arr.length, 10); // Cap at 20 for performance
+		
+		// Populate dropdown options
+		let optionsHtml = "";
+		for (let i = 1; i <= maxChunks; i++) {
+			optionsHtml += `<option value="${i}">${i}</option>`;
+		}
+		select.innerHTML = optionsHtml;
+
+		// Default to editing 1 chunk if opening via the main button
+		select.value = "1";
+		edit_save_count = 1;
+
+		update_edit_modal_content();
+		document.getElementById("edit_last_overlay").classList.remove("hidden");
+		
+		setTimeout(() => {
+			document.getElementById("edit_last_textarea").focus();
+		}, 10);
+	}
+
+	function update_edit_modal_content() {
+		const count = parseInt(document.getElementById("edit_count_select").value);
+		edit_save_count = count; // Update global tracking variable
+		
+		const recent_texts = gametext_arr.slice(-count);
+		// Join chunks. Lite chunks carry their own whitespace usually.
+		document.getElementById("edit_last_textarea").value = recent_texts.join("");
+	}
+
+	function cancel_edit_last() {
+		document.getElementById("edit_last_overlay").classList.add("hidden");
+		document.getElementById("edit_last_textarea").value = "";
+	}
+
+	function save_edit_last() {
+		if (gametext_arr.length === 0) return;
+
+		let new_text = document.getElementById("edit_last_textarea").value;
+		
+		// 1. Remove the old chunks (using the count currently set in the dropdown)
+		gametext_arr.splice(-edit_save_count, edit_save_count);
+
+		if (new_text.length === 0) {
+			render_gametext(true);
+			sync_multiplayer(false);
+			cancel_edit_last();
+			return;
+		}
+		
+		// 2. Splitting Logic (Preserved from original mod)
+		let ins = get_instructstartplaceholder();
+		let iet = get_instructendplaceholder();
+
+		let hasMarkers = new_text.includes(ins) || new_text.includes(iet);
+
+		if(hasMarkers) {
+			let pattern = new RegExp(`(?=${escapeRegExp(ins)})|(?=${escapeRegExp(iet)})`, "g");
+			let turns = new_text.split(pattern);
+
+			for(let i=0; i<turns.length; ++i) {
+				if(turns[i]) gametext_arr.push(turns[i]);
+			}
+		} else {
+			gametext_arr.push(new_text);
+		}
+		
+		render_gametext(true);
+		sync_multiplayer(false);
+		cancel_edit_last();
 	}
 
 	//saving and loading functionality
@@ -26225,6 +26333,8 @@ Be specific and avoid euphemisms/figures of speech.]
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actbranch" onclick="btn_branch(this)">Branch</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia" onclick="add_media_btn_menu()">Add File</button>
 				<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch" onclick="toggle_websearch()">&nbsp;</button>
+				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast" onclick="show_edit_last()">Edit X</button>
+				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_quickreply" onclick="show_quick_replies()">Quick Reply</button>
 			</div>
 			<div class="borderbox flex flex-push-right">
 				<input type="checkbox" id="allowediting" class="mainnav" onclick="toggle_editable()">
@@ -26275,6 +26385,8 @@ Be specific and avoid euphemisms/figures of speech.]
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia2" onclick="add_media_btn_menu()">Add File</button>
 						<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch2" onclick="toggle_websearch()">&nbsp;</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editmode" onclick="btn_editmode()">Edit</button>
+						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast2" onclick="show_edit_last()">Edit X</button>
+						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_quickreply" onclick="show_quick_replies()">Quick Reply</button>
 					</div>
 				</div>
 
@@ -28951,7 +29063,22 @@ Be specific and avoid euphemisms/figures of speech.]
 	<div class="toptoast hidden" id="toptoast"></div>
 
 	<input type="file" id="tempfilepicker" style="display:none;" accept="*">
-
+    
+	<!-- Edit Last Modal -->
+	<div id="edit_last_overlay" class="hidden">
+		<div id="edit_last_header">
+			<button type="button" class="btn btn-primary" onclick="cancel_edit_last()">Cancel</button>
+			<div style="display: flex; align-items: center; gap: 10px;">
+				<span style="font-weight: bold; color: var(--theme_color_text);">Edit Last</span>
+				<select id="edit_count_select" class="form-control" style="width: 70px; height: 30px; padding: 2px;" onchange="update_edit_modal_content()">
+					<!-- Options dynamically populated by JS -->
+				</select>
+				<span style="font-weight: bold; color: var(--theme_color_text);">Chunks</span>
+			</div>
+			<button type="button" class="btn btn-primary bg_green" onclick="save_edit_last()">Save</button>
+		</div>
+		<textarea id="edit_last_textarea" class="form-control" spellcheck="true" placeholder="Edit the last message here..."></textarea>
+	</div>
 </body>
 
 <script id="pwa-setup">
