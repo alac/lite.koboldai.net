@@ -2011,6 +2011,7 @@ Current version indicated by LITEVER below.
 		margin: 0 0 3px;
 		font-weight: bold;
 	}
+	.out-of-context { opacity: 0.5; filter: grayscale(0.8); }
 
 	/* Corpo UI */
 	.corpostyle
@@ -25222,8 +25223,41 @@ Be specific and avoid euphemisms/figures of speech.]
 				chatunits.push({"msg":"","add_stream_msg":`<span class='pending_text'>${pendstream}</span>`,"myturn":false,"unlabelled_name":true, "unlabelled_img":false});
 			}
 		}
+		// --- PRE-CALCULATION START ---
+		// 1. Calculate how many chars we can fit
+		let estimated_char_limit = (localsettings.max_context_length * 3.0); // Rough estimate KAI uses
+		let static_usage = (current_memory.length + current_anote.length + 500); // Buffer for system prompt/AN
+		let history_budget = estimated_char_limit - static_usage;
+
+		// 2. Find the cutoff index
+		let current_chars = 0;
+		let cutoff_index = -1;
+		// Loop backwards
+		for(let x=chatunits.length-1; x>=0; x--) {
+			current_chars += chatunits[x].msg.length;
+			if (current_chars > history_budget) {
+				cutoff_index = x;
+				break;
+			}
+		}
+		// --- PRE-CALCULATION END ---
+
 		for(var i=0;i<chatunits.length;++i)
 		{
+			// INSERT SUMMARY BOOKMARK
+			// Assuming you added localsettings.last_summary_idx logic
+			if (localsettings.last_summary_idx !== undefined && i == localsettings.last_summary_idx) {
+				newbodystr += `<div style="width:100%; text-align:center; border-bottom: 2px solid #00ff00; color: #00ff00; margin: 10px 0; font-size: 0.8em;">--- Last Summary Point ---</div>`;
+			}
+
+			// INSERT CONTEXT HORIZON
+			if (i == cutoff_index + 1) { // +1 because cutoff_index is the first one OUT, so this is the start of IN
+				newbodystr += `<div style="width:100%; text-align:center; border-bottom: 2px dashed #ff4444; color: #ff4444; margin: 10px 0; font-size: 0.8em;">--- Context Limit Horizon ---</div>`;
+			}
+
+			// Apply "Ghosting" opacity if i <= cutoff_index
+			let opacityStyle = (i <= cutoff_index) ? "opacity: 0.5;" : "";
+
 			let curr = chatunits[i];
 
 			//for aesthetic mode, use fancy quotes, but we must exclude anything in codeblocks, and html tags
@@ -25280,7 +25314,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			}
 
 			//prepare the main turn block
-			newbodystr += `<div style='display:flex; align-items:stretch; flex-direction: row;'>`;
+			newbodystr += `<div style='display:flex; align-items:stretch; flex-direction: row; ${opacityStyle}'>`;
 			if(curr.myturn)
 			{
 				newbodystr += `${(showavatar?avatarImage(false):"")}
@@ -26185,6 +26219,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				<div id="input_text_holder" style="position: relative; padding-right: 4px;">
 					<textarea title="User Input" style="height: 80px;" class="form-control menuinput_multiline mainnav actbtnbtm" id="input_text" oninput="update_submit_button()" onkeypress="return handle_typing(event)" onpaste="return img_paste_event(event)" placeholder="Enter text here"></textarea>
 					<span id="token-budget" class="token-budget"></span>
+					<span class="token-budget" style="right: 100px; cursor: pointer;" onclick="show_last_req()">[Inspect]</span>
 				</div>
 				<div style="position: relative; padding-right: 2px;">
 					<button type="button" class="btn btn-primary wait mainnav actbtnbtm" id="btnsend" disabled
