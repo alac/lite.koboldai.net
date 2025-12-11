@@ -15373,7 +15373,12 @@ Be specific and avoid euphemisms/figures of speech.]
 	{
 		retry_in_progress = false;
 		waiting_for_tool_call = 0;
-		
+
+		// Remove thinking blocks if present
+		if (gentxt.includes("</think>")) {
+			gentxt = gentxt.split("</think>").pop();
+		}
+
 		// Basic cleanup
 		gentxt = gentxt.trim();
 		
