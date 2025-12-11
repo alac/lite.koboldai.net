@@ -2502,6 +2502,37 @@ Current version indicated by LITEVER below.
 		}
 	}
 
+	/* Edit Last message button */
+	#edit_last_overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: var(--theme_color_bg);
+		z-index: 20000;
+		display: flex;
+		flex-direction: column;
+		padding: 10px;
+	}
+	#edit_last_header {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 10px;
+		flex-shrink: 0;
+	}
+	#edit_last_textarea {
+		width: 100%;
+		flex-grow: 1;
+		resize: none;
+		font-size: 16px; /* Prevents iOS zoom on focus */
+		padding: 10px;
+		box-sizing: border-box;
+		background-color: var(--theme_color_input_bg);
+		color: var(--theme_color_input_text);
+		border: 1px solid var(--theme_color_border);
+	}
+
 	/* Printer friendly view */
 	@media print {
 		#inputrow, #actionmenu, #actionmenu2,.topmenu,.lastreq,.corpolastreq,.cht_inp_hold_outer,.corpo_chat_outer,.corpo_leftpanel_open
@@ -5307,6 +5338,46 @@ Current version indicated by LITEVER below.
 			inputtxt = replace_noninstruct_placeholders(inputtxt,escape,isgametext,null);
 		}
 		return inputtxt;
+	}
+
+	function show_edit_last() {
+		if (gametext_arr.length === 0) return;
+		
+		// Get raw content of the last message
+		let last_text = gametext_arr[gametext_arr.length - 1];
+		
+		document.getElementById("edit_last_textarea").value = last_text;
+		document.getElementById("edit_last_overlay").classList.remove("hidden");
+		
+		// Slight delay to ensure element is visible before focus
+		setTimeout(() => {
+			document.getElementById("edit_last_textarea").focus();
+		}, 10);
+	}
+
+	function cancel_edit_last() {
+		document.getElementById("edit_last_overlay").classList.add("hidden");
+		document.getElementById("edit_last_textarea").value = "";
+	}
+
+	function save_edit_last() {
+		if (gametext_arr.length === 0) return;
+
+		let new_text = document.getElementById("edit_last_textarea").value;
+		let old_text = gametext_arr[gametext_arr.length - 1];
+		
+		// Only update and re-render if something actually changed
+		if (new_text !== old_text) {
+			gametext_arr[gametext_arr.length - 1] = new_text;
+			
+			// Updates the UI and triggers an autosave
+			render_gametext(true);
+			
+			// If using multiplayer, sync the change
+			sync_multiplayer(false);
+		}
+		
+		cancel_edit_last();
 	}
 
 	//saving and loading functionality
@@ -26203,6 +26274,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actbranch" onclick="btn_branch(this)">Branch</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia" onclick="add_media_btn_menu()">Add File</button>
 				<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch" onclick="toggle_websearch()">&nbsp;</button>
+				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast" onclick="show_edit_last()">Edit Last</button>
 			</div>
 			<div class="borderbox flex flex-push-right">
 				<input type="checkbox" id="allowediting" class="mainnav" onclick="toggle_editable()">
@@ -26253,6 +26325,7 @@ Be specific and avoid euphemisms/figures of speech.]
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia2" onclick="add_media_btn_menu()">Add File</button>
 						<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch2" onclick="toggle_websearch()">&nbsp;</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editmode" onclick="btn_editmode()">Edit</button>
+						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast2" onclick="show_edit_last()">Edit Last</button>
 					</div>
 				</div>
 
@@ -28929,7 +29002,16 @@ Be specific and avoid euphemisms/figures of speech.]
 	<div class="toptoast hidden" id="toptoast"></div>
 
 	<input type="file" id="tempfilepicker" style="display:none;" accept="*">
-
+    
+	<!-- Edit Last Modal -->
+	<div id="edit_last_overlay" class="hidden">
+		<div id="edit_last_header">
+			<button type="button" class="btn btn-primary" onclick="cancel_edit_last()">Cancel</button>
+			<span style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Edit Last Output</span>
+			<button type="button" class="btn btn-primary bg_green" onclick="save_edit_last()">Save</button>
+		</div>
+		<textarea id="edit_last_textarea" class="form-control" spellcheck="true" placeholder="Edit the last message here..."></textarea>
+	</div>
 </body>
 
 <script id="pwa-setup">
