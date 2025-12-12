@@ -3745,6 +3745,7 @@ Current version indicated by LITEVER below.
 	var kcpp_tts_json = "";
 	var avoidwelcome = false;
 	var edit_save_count = 1; // Tracks how many messages we are currently editing
+	var last_context_overlap_tokens = -1; // Tracks the overlap count from the last generation
 
 	var localsettings = {
 		my_api_key: "0000000000", //put here so it can be saved and loaded in persistent mode
@@ -3950,6 +3951,7 @@ Current version indicated by LITEVER below.
 		xtc_threshold: 0.2,
 		xtc_probability: 0.0,
 		sampler_order: [6, 0, 1, 3, 4, 2, 5],
+		last_summary_idx: -1, // Tracks the gametext index of the last summary
 	};
 
 	const defaultsettings = JSON.parse(JSON.stringify(localsettings));
@@ -15392,6 +15394,10 @@ Current version indicated by LITEVER below.
 		let onOk = ()=>{
 			pending_response_id = "-1";
 			waiting_for_tool_call = 1;
+
+			// Track the current conversation state as the summary point
+			localsettings.last_summary_idx = gametext_arr.length - 1;
+
 			let max_allowed_characters = Math.floor(localsettings.max_context_length * 3.0)-100;
 			let truncated_context = concat_gametext(true, "");
 
@@ -15490,9 +15496,6 @@ Be specific and avoid euphemisms/figures of speech.]
 		// Basic cleanup
 		gentxt = gentxt.trim();
 		
-		// REMOVED: gentxt = gentxt.split("###")[0]; // This was deleting markdown headers
-		// REMOVED: logic that only grabs gtar[0] (the first line)
-		
 		// Optional: Clean up common "Chatty" AI starts like "Sure, here is the summary:"
 		let prefixes = ["Sure,", "Here is", "Certainly", "The summary is"];
 		for(let p of prefixes) {
@@ -15504,11 +15507,67 @@ Be specific and avoid euphemisms/figures of speech.]
 			}
 		}
 
+		// --- DE-DUPLICATION LOGIC START ---
+		// Find the longest contiguous overlap between the existing memory and the new summary
+		// and remove that overlap from the new summary to prevent repetition.
+		if (temp_automem_store && temp_automem_store.trim() !== "") {
+			const oldLines = temp_automem_store.split('\n');
+			let newLines = gentxt.split('\n');
+			
+			// Create trimmed versions for comparison to ignore minor whitespace differences
+			const cleanOld = oldLines.map(l => l.trim());
+			const cleanNew = newLines.map(l => l.trim());
+
+			let maxLen = 0;
+			let startNew = -1;
+
+			// Find the largest contiguous overlap
+			for (let i = 0; i < cleanOld.length; i++) {
+				// Optimization: If remaining old lines are fewer than current maxLen, we can't find a longer match
+				if (cleanOld.length - i <= maxLen) break;
+				
+				for (let j = 0; j < cleanNew.length; j++) {
+					// Optimization: If remaining new lines are fewer than current maxLen, break inner loop
+					if (cleanNew.length - j <= maxLen) break;
+
+					if (cleanOld[i] === cleanNew[j]) {
+						let currentLen = 0;
+						// Look ahead to see how long the sequence matches
+						while (
+							(i + currentLen < cleanOld.length) &&
+							(j + currentLen < cleanNew.length) &&
+							(cleanOld[i + currentLen] === cleanNew[j + currentLen])
+						) {
+							currentLen++;
+						}
+
+						// Update if we found a longer sequence
+						if (currentLen > maxLen) {
+							maxLen = currentLen;
+							startNew = j;
+						}
+					}
+				}
+			}
+
+			// If a significant overlap was found, remove it
+			if (startNew !== -1 && maxLen > 0) {
+				newLines.splice(startNew, maxLen);
+				gentxt = newLines.join('\n').trim();
+			}
+		}
+		// --- DE-DUPLICATION LOGIC END ---
+
 		// Update the UI
+		if (gentxt === "") {
+			// If we filtered everything out (or AI returned nothing), do nothing to avoid adding empty newlines
+			console.log("Auto-summary resulted in duplicate or empty content; skipping update.");
+			return; 
+		}
+
 		if(temp_automem_store.trim()=="")
 		{
 			// If memory was empty, wrap it in brackets (standard KAI format)
-			// You can remove the brackets if you prefer raw text
 			document.getElementById("memorytext").value = "[Summary:\n"+gentxt+"\n]";
 		}
 		else
@@ -17652,7 +17711,26 @@ Be specific and avoid euphemisms/figures of speech.]
 				}
 			}
 
+			// --- SUMMARY MARKER INJECTION START ---
+			const summary_marker = "[[_SMB_]]";
+			let temp_marker_injected = false;
+			if (localsettings.last_summary_idx > -1 && localsettings.last_summary_idx < gametext_arr.length) {
+				gametext_arr[localsettings.last_summary_idx] += summary_marker;
+				temp_marker_injected = true;
+			}
+			// --- SUMMARY MARKER INJECTION END ---
+
 			let truncated_context = concat_gametext(true, "","","",false,true); //no need to truncate if memory is empty
+
+			// --- REVERT INJECTION START ---
+			if (temp_marker_injected) {
+				let idx = localsettings.last_summary_idx;
+				if (gametext_arr[idx] && gametext_arr[idx].endsWith(summary_marker)) {
+					gametext_arr[idx] = gametext_arr[idx].slice(0, -summary_marker.length);
+				}
+			}
+			// --- REVERT INJECTION END ---
+
 			truncated_context = truncated_context.replace(/\xA0/g,' '); //replace non breaking space nbsp
 
 			//remove past thoughts
@@ -18109,6 +18187,24 @@ Be specific and avoid euphemisms/figures of speech.]
 
 			//now we resize the context such that the memory and authors note can fit inside
 			truncated_context = substring_to_boundary(truncated_context, max_allowed_characters);
+
+			// --- SUMMARY OVERLAP MEASUREMENT START ---
+			if (localsettings.last_summary_idx > -1) {
+				let markPos = truncated_context.indexOf(summary_marker);
+				if (markPos > -1) {
+					// The marker exists, so everything before it is the overlap. 
+					// Divide by 3.0 (same estimation used in getMaxAllowedCharacters)
+					last_context_overlap_tokens = Math.floor(markPos / 3.0);
+					// Remove marker
+					truncated_context = truncated_context.replace(summary_marker, "");
+				} else {
+					// Marker was truncated out
+					last_context_overlap_tokens = 0;
+				}
+			} else {
+				last_context_overlap_tokens = -1;
+			}
+			// --- SUMMARY OVERLAP MEASUREMENT END ---
 
 			//append memory to the start of the context, clipping excess space if needed
 			//only do this processing if memory or anote is not blank
@@ -20448,7 +20544,20 @@ Be specific and avoid euphemisms/figures of speech.]
 		}
 
 		let genworkertxt = (genworker=="Custom Endpoint")?`<a href="#" onclick="get_and_show_workers()">${genworker}</a>`:`${genworker}`;
-		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by ${genworkertxt} using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${get_time_taken()} seconds.`;
+		
+		// Calculate Summary Overlap Indicator
+		let summary_indicator = "";
+		if (localsettings.last_summary_idx > -1 && last_context_overlap_tokens > -1) {
+			let est_total_context = localsettings.max_context_length - localsettings.max_length;
+			let pct = Math.floor((last_context_overlap_tokens / est_total_context) * 100);
+			let color = "color_green";
+			if (last_context_overlap_tokens == 0) color = "color_red";
+			else if (pct < 25) color = "color_orange";
+			
+			summary_indicator = ` | <span class="${color}" title="Summary Overlap: Amount of active history (estimated tokens) that is also covered by the last Auto-Summary.">Overlap: ${last_context_overlap_tokens}t (${pct}%)</span>`;
+		}
+
+		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by ${genworkertxt} using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${get_time_taken()} seconds.${summary_indicator}`;
 		document.getElementById("lastreq1").innerHTML = lastreq;
 		document.getElementById("lastreq2").innerHTML = lastreq;
 		document.getElementById("lastreq3").innerHTML = lastreq;
@@ -22137,6 +22246,11 @@ Be specific and avoid euphemisms/figures of speech.]
 	{
 		document.getElementById("gametext").contentEditable = (document.getElementById("allowediting").checked && pending_response_id=="");
 		let inEditMode = (document.getElementById("allowediting").checked ? true : false);
+
+		// Clamp last_summary_idx in case messages were deleted (undo/retry/branch switch)
+		if (localsettings.last_summary_idx >= gametext_arr.length) {
+			localsettings.last_summary_idx = gametext_arr.length - 1;
+		}
 
 		if(is_corpo_ui())
 		{
