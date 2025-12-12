@@ -25228,6 +25228,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				chatunits.push({"msg":"","add_stream_msg":`<span class='pending_text'>${pendstream}</span>`,"myturn":false,"unlabelled_name":true, "unlabelled_img":false});
 			}
 		}
+
 		// --- PRE-CALCULATION START ---
 		// 1. Calculate how many chars we can fit
 		let estimated_char_limit = (localsettings.max_context_length * 3.0); // Rough estimate KAI uses
@@ -25239,7 +25240,28 @@ Be specific and avoid euphemisms/figures of speech.]
 		let cutoff_index = -1;
 		// Loop backwards
 		for(let x=chatunits.length-1; x>=0; x--) {
-			current_chars += chatunits[x].msg.length;
+			let effectiveMsg = chatunits[x].msg;
+
+			// Logic to account for stripped thinking tags
+			// If we are stripping thoughts from the prompt, we shouldn't count them towards the horizon limit
+			if (get_thinking_regex() != "") {
+				// Mode 2: Exclude All Thinking
+				// Mode 1: Exclude except newest (so we strip if x is not the last index)
+				if (localsettings.strip_thinking_mode == 2 || (localsettings.strip_thinking_mode == 1 && x < chatunits.length - 1)) {
+					let pat = new RegExp(get_thinking_regex(), "gmi");
+					effectiveMsg = effectiveMsg.replace(pat, "");
+				}
+			}
+
+			// Also account for t2i tags which are usually stripped from context if auto-gen is on
+			if (localsettings.img_autogen_type == 2) {
+				const pat = /<t2i>(.*?)<\/t2i>/g;
+				effectiveMsg = effectiveMsg.replace(pat, "");
+				const pat2 = /{{\[DAT_.{1,8}_REF\]}}/g;
+				effectiveMsg = effectiveMsg.replace(pat2, "");
+			}
+
+			current_chars += effectiveMsg.length;
 			if (current_chars > history_budget) {
 				cutoff_index = x;
 				break;
