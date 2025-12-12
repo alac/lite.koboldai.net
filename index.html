@@ -3744,6 +3744,7 @@ Current version indicated by LITEVER below.
 	var websearch_in_progress = false;
 	var kcpp_tts_json = "";
 	var avoidwelcome = false;
+	var edit_save_count = 1; // Tracks how many messages we are currently editing
 
 	var localsettings = {
 		my_api_key: "0000000000", //put here so it can be saved and loaded in persistent mode
@@ -5343,13 +5344,32 @@ Current version indicated by LITEVER below.
 	function show_edit_last() {
 		if (gametext_arr.length === 0) return;
 		
-		// Get raw content of the last message
+		edit_save_count = 1; // Reset to 1
+		
+		// Get content
 		let last_text = gametext_arr[gametext_arr.length - 1];
 		
 		document.getElementById("edit_last_textarea").value = last_text;
+		document.getElementById("edit_last_label").innerText = "Edit Last Output"; // Reset Title
 		document.getElementById("edit_last_overlay").classList.remove("hidden");
 		
-		// Slight delay to ensure element is visible before focus
+		setTimeout(() => {
+			document.getElementById("edit_last_textarea").focus();
+		}, 10);
+	}
+
+	function show_edit_recent() {
+		if (gametext_arr.length === 0) return;
+
+		// Grab up to 3 messages
+		edit_save_count = Math.min(3, gametext_arr.length);
+		let recent_texts = gametext_arr.slice(-edit_save_count);
+		
+		// Join them with newlines for the editor
+		document.getElementById("edit_last_textarea").value = recent_texts.join("\n");
+		document.getElementById("edit_last_label").innerText = "Edit Recent (" + edit_save_count + ")";
+		document.getElementById("edit_last_overlay").classList.remove("hidden");
+		
 		setTimeout(() => {
 			document.getElementById("edit_last_textarea").focus();
 		}, 10);
@@ -5364,16 +5384,32 @@ Current version indicated by LITEVER below.
 		if (gametext_arr.length === 0) return;
 
 		let new_text = document.getElementById("edit_last_textarea").value;
-		let old_text = gametext_arr[gametext_arr.length - 1];
 		
-		// Only update and re-render if something actually changed
-		if (new_text !== old_text) {
-			gametext_arr[gametext_arr.length - 1] = new_text;
+		if (edit_save_count === 1) {
+			// Standard "Edit Last" behavior (No splicing, just direct replace)
+			let old_text = gametext_arr[gametext_arr.length - 1];
+			if (new_text !== old_text) {
+				gametext_arr[gametext_arr.length - 1] = new_text;
+				render_gametext(true);
+				sync_multiplayer(false);
+			}
+		} else {
+			// "Edit Recent" behavior
+			// 1. Remove the old chunks we loaded
+			gametext_arr.splice(-edit_save_count, edit_save_count);
 			
-			// Updates the UI and triggers an autosave
+			// 2. Split the new text by newlines and push back into array
+			// This allows you to merge 3 messages into 1, or split them into 5, etc.
+			if (new_text.length > 0) {
+				let new_chunks = new_text.split("\n");
+				for(let chunk of new_chunks) {
+					// Determine if you want to allow empty lines or not. 
+					// Usually keeping them is safer for formatting.
+					gametext_arr.push(chunk); 
+				}
+			}
+			
 			render_gametext(true);
-			
-			// If using multiplayer, sync the change
 			sync_multiplayer(false);
 		}
 		
@@ -26297,6 +26333,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia" onclick="add_media_btn_menu()">Add File</button>
 				<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch" onclick="toggle_websearch()">&nbsp;</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast" onclick="show_edit_last()">Edit Last</button>
+				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editrecent" onclick="show_edit_recent()">Edit Recent</button>
 			</div>
 			<div class="borderbox flex flex-push-right">
 				<input type="checkbox" id="allowediting" class="mainnav" onclick="toggle_editable()">
@@ -26348,6 +26385,7 @@ Be specific and avoid euphemisms/figures of speech.]
 						<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch2" onclick="toggle_websearch()">&nbsp;</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editmode" onclick="btn_editmode()">Edit</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast2" onclick="show_edit_last()">Edit Last</button>
+						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editrecent2" onclick="show_edit_recent()">Edit Recent</button>
 					</div>
 				</div>
 
@@ -29029,7 +29067,7 @@ Be specific and avoid euphemisms/figures of speech.]
 	<div id="edit_last_overlay" class="hidden">
 		<div id="edit_last_header">
 			<button type="button" class="btn btn-primary" onclick="cancel_edit_last()">Cancel</button>
-			<span style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Edit Last Output</span>
+			<span id="edit_last_label" style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Edit Last Output</span>
 			<button type="button" class="btn btn-primary bg_green" onclick="save_edit_last()">Save</button>
 		</div>
 		<textarea id="edit_last_textarea" class="form-control" spellcheck="true" placeholder="Edit the last message here..."></textarea>
