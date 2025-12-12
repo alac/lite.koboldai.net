@@ -5385,34 +5385,93 @@ Current version indicated by LITEVER below.
 
 		let new_text = document.getElementById("edit_last_textarea").value;
 		
+		// If only editing 1 item, keep it simple to avoid parser edge cases
 		if (edit_save_count === 1) {
-			// Standard "Edit Last" behavior (No splicing, just direct replace)
 			let old_text = gametext_arr[gametext_arr.length - 1];
 			if (new_text !== old_text) {
 				gametext_arr[gametext_arr.length - 1] = new_text;
 				render_gametext(true);
 				sync_multiplayer(false);
 			}
-		} else {
-			// "Edit Recent" behavior
-			// 1. Remove the old chunks we loaded
-			gametext_arr.splice(-edit_save_count, edit_save_count);
-			
-			// 2. Split the new text by newlines and push back into array
-			// This allows you to merge 3 messages into 1, or split them into 5, etc.
-			if (new_text.length > 0) {
-				let new_chunks = new_text.split("\n");
-				for(let chunk of new_chunks) {
-					// Determine if you want to allow empty lines or not. 
-					// Usually keeping them is safer for formatting.
-					gametext_arr.push(chunk); 
+			cancel_edit_last();
+			return;
+		}
+
+		// --- Complex Chunking Logic (Adapted from merge_edit_field) ---
+
+		// 1. Remove the old chunks we loaded
+		gametext_arr.splice(-edit_save_count, edit_save_count);
+		
+		// 2. Determine if we need to split by Instruct Tags or Newlines
+		let splitbyinsttags = false;
+		if(localsettings.opmode == 4) {
+			let strA = get_instructstartplaceholder();
+			let strB = get_instructendplaceholder();
+			if(new_text.includes(strA) || new_text.includes(strB)) {
+				splitbyinsttags = true;
+			}
+		}
+
+		if(splitbyinsttags) {
+			// --- Instruct Mode Splitting ---
+			let ins = get_instructstartplaceholder();
+			let ine = get_instructendplaceholder();
+			let delimiters = [ins, ine];
+			let turns = splitByDelimiters(new_text, delimiters);
+
+			// Re-normalize headers onto the text chunks
+			for(let i=0; i<turns.length; ++i) {
+				let temp = "";
+				if(turns[i].startsWith(ins)) {
+					temp = ins;
+					turns[i] = turns[i].substring(ins.length);
+				} else if(turns[i].startsWith(ine)) {
+					temp = ine;
+					turns[i] = turns[i].substring(ine.length);
 				}
+				
+				// Handle edge case where delimiters appear inside the chunk
+				let subturns = splitByDelimiters(turns[i], [ins.trim(), ine.trim()]);
+				subturns[0] = temp + subturns[0];
+				turns.splice(i, 1, ...subturns);
+				i += subturns.length - 1; 
 			}
 			
-			render_gametext(true);
-			sync_multiplayer(false);
+			// Ensure End Tags stick to the previous turn (Standard Kobold logic)
+			for(let i=0; i<turns.length-1; ++i) {
+				if(turns[i].startsWith(ins) && turns[i+1].startsWith(ine)) {
+					turns[i+1] = turns[i+1].substring(ine.length);
+					turns[i] = turns[i] + ine;
+				}
+			}
+
+			// Push results
+			for(let i=0; i<turns.length; ++i) {
+				if(turns[i]) gametext_arr.push(turns[i]);
+			}
+
+		} else {
+			// --- Standard/Chat/Story Splitting ---
+			if(new_text.length > 0) {
+				let splittertoken = "\n";
+				// If the user uses double newlines (paragraphs), prefer that as the delimiter
+				if (new_text.includes("\n\n")) {
+					splittertoken = "\n\n";
+				}
+				let splitmergedstory = new_text.split(splittertoken);
+				for (var i = 0; i < splitmergedstory.length; ++i) {
+					// We re-attach the newline to the start of the chunk so concatenation works later
+					if (i != 0) {
+						gametext_arr.push(splittertoken + splitmergedstory[i]);
+					} else {
+						gametext_arr.push(splitmergedstory[i]);
+					}
+				}
+			}
 		}
 		
+		render_gametext(true);
+		sync_multiplayer(false);
 		cancel_edit_last();
 	}
 
