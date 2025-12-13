@@ -3950,7 +3950,6 @@ Current version indicated by LITEVER below.
 		xtc_threshold: 0.2,
 		xtc_probability: 0.0,
 		sampler_order: [6, 0, 1, 3, 4, 2, 5],
-		last_summary_idx: -1, // Tracks the gametext index of the last summary
 	};
 
 	const defaultsettings = JSON.parse(JSON.stringify(localsettings));
@@ -15451,8 +15450,6 @@ Current version indicated by LITEVER below.
 		let onOk = ()=>{
 			pending_response_id = "-1";
 			waiting_for_tool_call = 1;
-			// Track the current conversation state as the summary point
-			localsettings.last_summary_idx = gametext_arr.length - 1;
 			let max_allowed_characters = Math.floor(localsettings.max_context_length * 3.0)-100;
 			let truncated_context = concat_gametext(true, "");
 
@@ -20509,21 +20506,7 @@ Be specific and avoid euphemisms/figures of speech.]
 		}
 
 		let genworkertxt = (genworker=="Custom Endpoint")?`<a href="#" onclick="get_and_show_workers()">${genworker}</a>`:`${genworker}`;
-
-		// Calculate Summary Overlap Indicator
-		let summary_indicator = "";
-		if (localsettings.last_summary_idx > -1) {
-			let stats = get_summary_overlap_stats();
-			if (stats) {
-				let color = "color_green";
-				if (stats.tokens == 0) color = "color_red";
-				else if (stats.percent < 25) color = "color_orange";
-				
-				summary_indicator = ` | <span class="${color}" title="Summary Overlap: Amount of context (estimated tokens) retained that is covered by the last Auto-Summary.">Overlap: ${stats.tokens}t (${stats.percent}%)</span>`;
-			}
-		}
-
-		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by ${genworkertxt} using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${get_time_taken()} seconds.${summary_indicator}`;
+		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by ${genworkertxt} using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${get_time_taken()} seconds.`;
 		document.getElementById("lastreq1").innerHTML = lastreq;
 		document.getElementById("lastreq2").innerHTML = lastreq;
 		document.getElementById("lastreq3").innerHTML = lastreq;
@@ -22213,11 +22196,6 @@ Be specific and avoid euphemisms/figures of speech.]
 		document.getElementById("gametext").contentEditable = (document.getElementById("allowediting").checked && pending_response_id=="");
 		let inEditMode = (document.getElementById("allowediting").checked ? true : false);
 
-		// Clamp last_summary_idx in case messages were deleted (undo/retry/branch switch)
-		if (localsettings.last_summary_idx >= gametext_arr.length) {
-			localsettings.last_summary_idx = gametext_arr.length - 1;
-		}
-
 		if(is_corpo_ui())
 		{
 			document.body.classList.add('corpoui');
@@ -22819,165 +22797,6 @@ Be specific and avoid euphemisms/figures of speech.]
 		{
 			document.getElementById("wordsearch_panel").classList.add("hidden");
 		}
-	}
-
-	// Helper to calculate effective context limits based on settings and connected workers
-	function get_effective_max_context() {
-		let maxctxlen = localsettings.max_context_length;
-		let maxgenamt = localsettings.max_length;
-
-		// Replicate logic from submit_generation to handle Auto-Adjust settings
-		if(!is_using_custom_ep() && (localsettings.auto_genamt || localsettings.auto_ctxlen)) {
-			let wrk_list = selected_workers;
-			if((wrk_list==null||wrk_list.length==0)&&(selected_models && selected_models.length>0)) {
-				wrk_list = [];
-				for (let ww = 0; ww < worker_data.length; ++ww) {
-					let curr = worker_data[ww];
-					for(let mm=0;mm<selected_models.length;++mm) {
-						let x = selected_models[mm];
-						if(curr.models.includes(x.name)) {
-							wrk_list.push(curr);
-							break;
-						}
-					}
-				}
-			}
-
-			for(let ww=0;ww<wrk_list.length;++ww) {
-				let curr = wrk_list[ww];
-				if(localsettings.auto_ctxlen) {
-					maxctxlen = Math.min(curr.max_context_length,maxctxlen);
-				}
-				if(localsettings.auto_genamt) {
-					maxgenamt = Math.min(curr.max_length,maxgenamt);
-				}
-			}
-		}
-		return { maxctxlen, maxgenamt };
-	}
-
-	// Helper to clean a specific text chunk exactly as it would be sent to the AI
-	// This replicates the preprocessing pipeline in submit_generation
-	function clean_chunk_for_token_count(chunk) {
-		// 1. Regex Replacements
-		if(localsettings.regexreplace_data && localsettings.regexreplace_data.length>0) {
-			for(let i=0;i<localsettings.regexreplace_data.length;++i) {
-				if(localsettings.regexreplace_data[i].p!="" && !(localsettings.regexreplace_data[i].d)) {
-					let pat = new RegExp(localsettings.regexreplace_data[i].p, "gm");
-					let rep = unescape_regex_newlines(localsettings.regexreplace_data[i].r);
-					chunk = chunk.replace(pat, rep);
-				}
-			}
-		}
-
-		// 2. T2I Tags removal
-		if (localsettings.img_autogen_type == 2 && localsettings.generate_images_mode != 0) {
-			chunk = chunk.replace(/<t2i>(.*?)<\/t2i>/g, "");
-		}
-
-		// 3. Image Placeholders removal
-		chunk = chunk.replace(/\[<\|p\|.+?\|p\|>\]/g, "");
-		chunk = chunk.replace(/\[<\|h\|.+?\|h\|>\]/g, "");
-
-		// 4. Thinking Tags removal
-		if(get_thinking_regex()!="") {
-			if(localsettings.strip_thinking_mode==2) { 
-				let pat = new RegExp(get_thinking_regex(), "gm");
-				chunk = chunk.replace(pat, "");
-			}
-			else if(localsettings.strip_thinking_mode==1) {
-				// Note: In submit_generation, this is done on the *concatenated* string.
-				// Since we are processing chunks, we can't perfectly know which is the "last" thought if it spans chunks.
-				// However, for token counting, assuming thinking tags are self-contained in messages is usually safe enough.
-				// We will skip stripping here and rely on the fact that if it's the *very last* chunk in the array, we might keep it.
-				// But for a 'past history' calculator, we generally assume older thoughts are stripped if mode is 1.
-				// Implementation: If we are walking backwards, the first chunk we see is the 'recent' one.
-			}
-		}
-
-		// 5. Whitespace trimming
-		if (localsettings.trimwhitespace) {
-			chunk = chunk.replace(/[\t\r\n ]+$/, '');
-		}
-
-		return chunk;
-	}
-
-	function get_summary_overlap_stats() {
-		if (localsettings.last_summary_idx == -1) return null;
-
-		// Get effective limits
-		let { maxctxlen, maxgenamt } = get_effective_max_context();
-
-		// Estimate chars per token
-		let chars_per_token = 3.0 * (localsettings.token_count_multiplier * 0.01);
-		
-		// Calculate total available input context
-		let max_input_tokens = maxctxlen - maxgenamt;
-		let total_char_budget = Math.floor(max_input_tokens * chars_per_token) - 100; // Safety buffer
-
-		// Calculate Static Usage (Memory + AN)
-		// Note: World Info is dynamic, so we cannot predict it accurately without running the full search.
-		// We exclude WI from this estimate, meaning the actual overlap might be slightly lower if WI triggers.
-		let static_chars = 0;
-		if(current_memory) static_chars += replace_placeholders(current_memory, false, false, true).length;
-		if(current_anote) static_chars += replace_placeholders(current_anote, false, false, true).length;
-		
-		// Remaining budget for chat history
-		let history_budget_chars = total_char_budget - static_chars;
-		
-		if (history_budget_chars <= 0) return { tokens: 0, percent: 0 };
-
-		let current_history_chars = 0;
-		let overlap_chars = 0;
-		
-		// Walk backwards through history
-		for (let i = gametext_arr.length - 1; i >= 0; i--) {
-			let chunk = gametext_arr[i];
-			
-			// Clean the chunk
-			chunk = clean_chunk_for_token_count(chunk);
-
-			// Handle "Strip thinking except recent" logic
-			if(get_thinking_regex()!="" && localsettings.strip_thinking_mode==1) {
-				// If this is NOT the very last message in the array, strip thoughts
-				if (i < gametext_arr.length - 1) {
-					let pat = new RegExp(get_thinking_regex(), "gm");
-					chunk = chunk.replace(pat, "");
-				}
-			}
-
-			let chunk_len = chunk.length;
-			
-			// Fill bucket
-			if (current_history_chars + chunk_len <= history_budget_chars) {
-				current_history_chars += chunk_len;
-				// If this index is <= the summary index, it counts as overlap
-				if (i <= localsettings.last_summary_idx) {
-					overlap_chars += chunk_len;
-				}
-			} else {
-				// Partial fit (hit the horizon)
-				let remaining = history_budget_chars - current_history_chars;
-				if (remaining > 0) {
-					current_history_chars += remaining;
-					if (i <= localsettings.last_summary_idx) {
-						overlap_chars += remaining;
-					}
-				}
-				break; // Budget full
-			}
-		}
-
-		// Convert back to tokens for display
-		let est_overlap_tokens = Math.floor(overlap_chars / chars_per_token);
-		let est_context_tokens = Math.floor(current_history_chars / chars_per_token);
-		let pct = est_context_tokens > 0 ? Math.floor((est_overlap_tokens / est_context_tokens) * 100) : 0;
-		
-		return {
-			tokens: est_overlap_tokens,
-			percent: pct
-		};
 	}
 
 	function classic_delete_turn(idx)
