@@ -1,3 +1,15 @@
+This fork has a few hacky features:
+- "Custom Models" list has a favorite toggle, that pushes models to the top of the list.
+- Long context UX upgrades:
+-- Dim messages that have fallen out of context.
+-- Add a "context horizon" divider that separates in-context and out-of-context.
+-- Add "Edit Last" and "Edit Recent" (e.g. last 3) buttons for conversations that make the "full edit" view lag.
+- "Autogenerate Summary" modifications:
+-- Minor tweaks: different prompt (custom input tbd), remove thinking blocks from summary.
+-- Add a "summary overlap" indicator to warn when the user needs to update the summary.
+
+Original readme below:
+
 # KoboldAI Lite
 ## [lite.koboldai.net](https://lite.koboldai.net)
 
