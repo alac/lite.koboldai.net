@@ -2503,7 +2503,7 @@ Current version indicated by LITEVER below.
 	}
 
 	/* Edit Last message button */
-	#edit_last_overlay {
+	#edit_last_overlay, #quick_reply_overlay, #quick_reply_edit_overlay {
 		position: fixed;
 		top: 0;
 		left: 0;
@@ -2515,13 +2515,13 @@ Current version indicated by LITEVER below.
 		flex-direction: column;
 		padding: 10px;
 	}
-	#edit_last_header {
+	#edit_last_header, #quick_reply_header, #quick_reply_edit_header {
 		display: flex;
 		justify-content: space-between;
 		margin-bottom: 10px;
 		flex-shrink: 0;
 	}
-	#edit_last_textarea {
+	#edit_last_textarea, #quick_reply_editor {
 		width: 100%;
 		flex-grow: 1;
 		resize: none;
@@ -3952,6 +3952,8 @@ Current version indicated by LITEVER below.
 		xtc_probability: 0.0,
 		sampler_order: [6, 0, 1, 3, 4, 2, 5],
 		last_summary_idx: -1, // Tracks the gametext index of the last summary
+		quick_replies: [
+		],
 	};
 
 	const defaultsettings = JSON.parse(JSON.stringify(localsettings));
@@ -5417,6 +5419,130 @@ Current version indicated by LITEVER below.
 		render_gametext(true);
 		sync_multiplayer(false);
 		cancel_edit_last();
+	}
+
+	/* Quick Reply Logic */
+	function get_active_input_element() {
+		// Detect which input box is currently visible/active based on UI mode
+		if (!document.getElementById("corpointerface").classList.contains("hidden")) {
+			return document.getElementById("corpo_cht_inp");
+		} else if (!document.getElementById("enhancedchatinterface").classList.contains("hidden")) {
+			return document.getElementById("cht_inp");
+		} else {
+			return document.getElementById("input_text");
+		}
+	}
+
+	function show_quick_replies() {
+		let grid = document.getElementById("quick_reply_grid");
+		let html = "";
+		let replies = localsettings.quick_replies || [];
+		
+		for (let i = 0; i < replies.length; i++) {
+			let item = replies[i];
+			// Using purple style for generic actions, consistent with scenario menu
+			html += `<button type="button" class="scenarioitem purple btn btn-primary" onclick="apply_quick_reply(${i})">
+				<div style="font-weight:bold; font-size:1.1em">${escape_html(item.label)}</div>
+				<div style="font-size:0.8em; opacity:0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escape_html(item.content.replace(/\n/g, ' '))}</div>
+			</button>`;
+		}
+		
+		if(replies.length === 0) {
+			html = `<div class="menutext">No quick replies defined.<br>Click "Edit" to add some using the syntax:<br><br>:Button Name<br>Content goes here</div>`;
+		}
+
+		grid.innerHTML = html;
+		document.getElementById("quick_reply_overlay").classList.remove("hidden");
+	}
+
+	function close_quick_replies() {
+		document.getElementById("quick_reply_overlay").classList.add("hidden");
+	}
+
+	function apply_quick_reply(idx) {
+		let replies = localsettings.quick_replies;
+		if (replies && replies[idx]) {
+			let target = get_active_input_element();
+			if (target) {
+				// Append with newline if not empty
+				if (target.value && !target.value.endsWith("\n")) {
+					target.value += "\n";
+				}
+				target.value += replies[idx].content;
+				
+				// Trigger resize events for chat boxes
+				if(typeof chat_resize_input === "function") chat_resize_input();
+				if(typeof corpoedit_resize_input === "function") corpoedit_resize_input();
+				
+				// Focus the input
+				target.focus();
+				
+				// If on mobile, scroll to bottom of input
+				target.scrollTop = target.scrollHeight;
+			}
+		}
+		close_quick_replies();
+	}
+
+	function show_quick_reply_editor() {
+		close_quick_replies(); // Hide selector
+		let replies = localsettings.quick_replies || [];
+		let text = "";
+		
+		// Serialize to Frontmatter syntax
+		for (let item of replies) {
+			text += `:${item.label}\n${item.content}\n\n`;
+		}
+		
+		let editor = document.getElementById("quick_reply_editor");
+		editor.value = text.trim();
+		document.getElementById("quick_reply_edit_overlay").classList.remove("hidden");
+		editor.focus();
+	}
+
+	function cancel_quick_reply_editor() {
+		document.getElementById("quick_reply_edit_overlay").classList.add("hidden");
+		show_quick_replies(); // Go back to selector
+	}
+
+	function save_quick_reply_editor() {
+		let text = document.getElementById("quick_reply_editor").value;
+		let lines = text.split("\n");
+		let newReplies = [];
+		let currentLabel = null;
+		let currentContent = [];
+
+		for (let line of lines) {
+			if (line.startsWith(":")) {
+				// Save previous if exists
+				if (currentLabel) {
+					newReplies.push({
+						label: currentLabel,
+						content: currentContent.join("\n").trim()
+					});
+				}
+				// Start new
+				currentLabel = line.substring(1).trim();
+				currentContent = [];
+			} else {
+				if (currentLabel) {
+					currentContent.push(line);
+				}
+			}
+		}
+		// Save final entry
+		if (currentLabel) {
+			newReplies.push({
+				label: currentLabel,
+				content: currentContent.join("\n").trim()
+			});
+		}
+
+		localsettings.quick_replies = newReplies;
+		autosave(); // Persist changes
+		
+		document.getElementById("quick_reply_edit_overlay").classList.add("hidden");
+		show_quick_replies(); // Return to selector
 	}
 
 	//saving and loading functionality
@@ -8999,6 +9125,7 @@ Current version indicated by LITEVER below.
 					let tmp_comfy = localsettings.saved_comfy_url;
 					let tmp_xtts = localsettings.saved_xtts_url;
 					let tmp_imggen = localsettings.generate_images_mode;
+					let tmp_quickreplies = localsettings.quick_replies;
 
 					if(loadgensettings)
 					{
@@ -9028,6 +9155,7 @@ Current version indicated by LITEVER below.
 						localsettings.think_injected = old_think_injected;
 						localsettings.strip_thinking_mode = old_strip_thinking_mode;
 						localsettings.hide_think_stream = old_hide_think_stream;
+						localsettings.quick_replies = tmp_quickreplies; // Restore if we aren't loading tokens/settings
 					}
 
 					localsettings.my_api_key = tmpapikey1;
@@ -29192,6 +29320,28 @@ Be specific and avoid euphemisms/figures of speech.]
 			<button type="button" class="btn btn-primary bg_green" onclick="save_edit_last()">Save</button>
 		</div>
 		<textarea id="edit_last_textarea" class="form-control" spellcheck="true" placeholder="Edit the last message here..."></textarea>
+	</div>
+
+	<!-- Quick Reply Selector Modal -->
+	<div id="quick_reply_overlay" class="hidden">
+		<div id="quick_reply_header">
+			<button type="button" class="btn btn-primary" onclick="close_quick_replies()">Close</button>
+			<span style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Quick Replies</span>
+			<button type="button" class="btn btn-primary" onclick="show_quick_reply_editor()">Edit</button>
+		</div>
+		<div id="quick_reply_grid" class="scenariogrid" style="height: 100%; padding: 0;">
+			<!-- Generated buttons go here -->
+		</div>
+	</div>
+
+	<!-- Quick Reply Editor Modal -->
+	<div id="quick_reply_edit_overlay" class="hidden">
+		<div id="quick_reply_edit_header">
+			<button type="button" class="btn btn-primary" onclick="cancel_quick_reply_editor()">Cancel</button>
+			<span style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Edit Macros</span>
+			<button type="button" class="btn btn-primary bg_green" onclick="save_quick_reply_editor()">Save</button>
+		</div>
+		<textarea id="quick_reply_editor" class="form-control" spellcheck="false" placeholder=":Label Name&#10;Text content to insert..."></textarea>
 	</div>
 </body>
 
