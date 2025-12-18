@@ -2898,6 +2898,38 @@ Current version indicated by LITEVER below.
 	.bolded {
 		font-weight: bold;
 	}
+
+	/* Mobile specific fixes for popups */
+	@media (max-width: 768px) {
+		/* Make popups take up almost full screen on mobile */
+		.nspopup.flexsize, 
+		.nspopup.flexsizebig, 
+		.nspopup.flexsizesmall, 
+		.nspopup.flexsizevsmall {
+			width: 98% !important;
+			margin-top: 5px !important;
+			margin-bottom: 5px !important;
+			height: calc(100vh - 20px) !important;
+			display: flex;
+			flex-direction: column;
+		}
+
+		/* Allow the body of the settings/memory to scroll and expand */
+		.context_tab_container {
+			flex-grow: 1;
+			display: flex;
+			flex-direction: column;
+			overflow-y: auto;
+			height: 100%;
+		}
+
+		/* Make the textareas expand to fill remaining height */
+		#memorytext, #anotetext {
+			flex-grow: 1;
+			height: auto !important; /* Override inline styles */
+			min-height: 200px;
+		}
+	}
 	</style>
 
 	<script id="third-party.min">
@@ -24114,29 +24146,35 @@ Be specific and avoid euphemisms/figures of speech.]
 	}
 
 	var memory_tab = 0;
-	function display_memory_tab(newtab)
-	{
+	function display_memory_tab(newtab) {
 		memory_tab = newtab;
 		document.getElementById("memory_tab").classList.remove("active");
 		document.getElementById("wi_tab").classList.remove("active");
 		document.getElementById("documentdb_tab").classList.remove("active");
+		document.getElementById("anote_tab").classList.remove("active");
+		
 		document.getElementById("memory_tab_container").classList.add("hidden");
 		document.getElementById("wi_tab_container").classList.add("hidden");
 		document.getElementById("documentdb_tab_container").classList.add("hidden");
+		document.getElementById("anote_tab_container").classList.add("hidden");
 
 		switch (newtab) {
-			case 0:
+			case 0: // Memory
 				document.getElementById("memory_tab").classList.add("active");
 				document.getElementById("memory_tab_container").classList.remove("hidden");
 				break;
-			case 1:
+			case 1: // World Info
 				document.getElementById("wi_tab").classList.add("active");
 				document.getElementById("wi_tab_container").classList.remove("hidden");
 				break;
-			case 2:
+			case 2: // TextDB
 				document.getElementById("documentdb_tab").classList.add("active");
 				document.getElementById("documentdb_tab_container").classList.remove("hidden");
 				estimate_and_show_textDB_usage();
+				break;
+			case 3: // Author's Note
+				document.getElementById("anote_tab").classList.add("active");
+				document.getElementById("anote_tab_container").classList.remove("hidden");
 				break;
 			default:
 				break;
@@ -26711,50 +26749,54 @@ Be specific and avoid euphemisms/figures of speech.]
 			<div class="popuptitlebar">
 				<div class="popuptitletext">Context Data</div>
 			</div>
-			<div><ul class="nav nav-tabs settingsnav">
-				<li id="memory_tab" class="active"><a class="" href="#" onclick="display_memory_tab(0)">Memory</a></li>
-				<li id="wi_tab"><a class="" href="#" onclick="display_memory_tab(1)">World Info</a></li>
-				<li id="documentdb_tab"><a class="" href="#" onclick="display_memory_tab(2)">TextDB</a></li>
-			</ul></div>
+			<div>
+				<ul class="nav nav-tabs settingsnav">
+					<li id="memory_tab" class="active"><a class="" href="#" onclick="display_memory_tab(0)">Memory</a></li>
+					<li id="anote_tab"><a class="" href="#" onclick="display_memory_tab(3)">Author's Note</a></li>
+					<li id="wi_tab"><a class="" href="#" onclick="display_memory_tab(1)">World Info</a></li>
+					<li id="documentdb_tab"><a class="" href="#" onclick="display_memory_tab(2)">TextDB</a></li>
+				</ul>
+			</div>
 
+			<!-- Memory Tab -->
 			<div class="context_tab_container" id="memory_tab_container">
 				<div class="settinglabel">
-					<span class="justifyleft">Memory<span class="helpicon">?<span
-						class="helptext">Put the information you want the AI to always remember. It will be inserted into the top of every request sent to the AI. Placeholder tags can be used.</span></span>
+					<span class="justifyleft">Memory<span class="helpicon">?<span class="helptext">Put the information you want the AI to always remember. It will be inserted into the top of every request sent to the AI. Placeholder tags can be used.</span></span>
 						<button type="button" class="btn btn-primary" style="font-size:10px;padding:2px 5px;margin-left:4px;margin:2px;" onclick="memory_add_instruction()">Add Instruction</button>
 					</span>
-					<span class="justifyright flex-push-right" >
-						<div class="settinglabel" style="padding-top: 4px;">
+					
+					<!-- Buttons moved here -->
+					<span class="justifyright flex-push-right" style="display: flex; flex-direction: column; align-items: flex-end;">
+						<div style="margin-bottom: 2px;">
+							<button type="button" class="btn btn-primary" style="padding:2px 6px; font-size: 11px;" id="btnnotes" onclick="set_personal_notes()">Notes</button>
+							<button type="button" class="btn btn-primary" style="padding:2px 6px; font-size: 11px;" id="btnautogenmem" onclick="autogenerate_summary_memory()">AutoGenerate Memory</button>
+						</div>
+						<div class="settinglabel" style="padding-top: 0px;">
 							<div class="justifyleft settingsmall" title="Add newline after injecting memory text">Newline After Memory </div>
-						<input type="checkbox" title="Add Newline After Memory" id="newlineaftermemory" style="margin:0px 0 0;" checked>
+							<input type="checkbox" title="Add Newline After Memory" id="newlineaftermemory" style="margin:0px 0 0;" checked>
 						</div>
 					</span>
 				</div>
-				<textarea title="Edit Memory" class="form-control menuinput_multiline" id="memorytext" style="height: 160px;"
-					placeholder="Edit the memory to be sent with each request to the AI."></textarea>
+				<textarea title="Edit Memory" class="form-control menuinput_multiline" id="memorytext" style="height: 450px;" placeholder="Edit the memory to be sent with each request to the AI."></textarea>
+			</div>
+
+			<!-- Author's Note Tab -->
+			<div class="context_tab_container hidden" id="anote_tab_container">
 				<div class="settinglabel">
-					<div class="justifyleft"><br>Author's Note<span class="helpicon">?<span
-						class="helptext">Similar to Memory, but inserted near the end of the text instead of the start. A good way to control the mood/behavior of the AI.</span></span></div>
-					<span class="justifyright flex-push-right" >
-						<button type="button" class="btn btn-primary" style="padding:4px 6px;margin-top:4px;" id="btnnotes" onclick="set_personal_notes()">Notes</button>
-						<button type="button" class="btn btn-primary" style="padding:4px 6px;margin-top:4px;" id="btnautogenmem" onclick="autogenerate_summary_memory()">AutoGenerate Memory</button>
-					</span>
+					<div class="justifyleft"><br>Author's Note<span class="helpicon">?<span class="helptext">Similar to Memory, but inserted near the end of the text instead of the start. A good way to control the mood/behavior of the AI.</span></span></div>
+					<!-- Buttons removed from here -->
 				</div>
-				<textarea title="Edit Author's Note" style="height: 80px;" class="form-control menuinput_multiline" id="anotetext"
-					placeholder="Author's Note will be inserted close to end of context."></textarea>
+				<textarea title="Edit Author's Note" style="height: 350px;" class="form-control menuinput_multiline" id="anotetext" placeholder="Author's Note will be inserted close to end of context."></textarea>
 				<br>
 				<div class="settinglabel">
-					<span class="justifyleft">Author's Note Template<span class="helpicon">?<span
-						class="helptext">A placeholder, will be inserted with the author's note replacing the &lt;|&gt;. You generally don't need to change this.</span></span></span>
-					<span class="justifyright flex-push-right" >
-						A/N Strength<span class="helpicon">?<span
-							class="helptext">Controls how far back to insert the Author's Note. Notes injected closer to the end have a stronger effect.</span></span>
+					<span class="justifyleft">Author's Note Template<span class="helpicon">?<span class="helptext">A placeholder, will be inserted with the author's note replacing the &lt;|&gt;. You generally don't need to change this.</span></span></span>
+					<span class="justifyright flex-push-right">
+						A/N Strength<span class="helpicon">?<span class="helptext">Controls how far back to insert the Author's Note. Notes injected closer to the end have a stronger effect.</span></span>
 					</span>
 				</div>
 				<div style="display: flex; column-gap: 4px;">
-				<input title="Author's Note Template" class="form-control menuinput_inline" type="text"
-					placeholder="(the &lt;|&gt; will be replaced with the Author's Note text)" value="" id="anotetemplate">
-					<select title="Author's Note Strength" style="padding:4px; display: inline;	width: 94px; padding: 6px 3px;" class="form-control" id="anote_strength">
+					<input title="Author's Note Template" class="form-control menuinput_inline" type="text" placeholder="(the &lt;|&gt; will be replaced with the Author's Note text)" value="" id="anotetemplate">
+					<select title="Author's Note Strength" style="padding:4px; display: inline; width: 94px; padding: 6px 3px;" class="form-control" id="anote_strength">
 						<option value="480">Weak</option>
 						<option value="320">Medium</option>
 						<option value="160">Strong</option>
@@ -26763,15 +26805,14 @@ Be specific and avoid euphemisms/figures of speech.]
 				</div>
 			</div>
 
-			<div class="context_tab_container" id="wi_tab_container">
+			<div class="context_tab_container hidden" id="wi_tab_container">
 				<div style="display: flex;">
-				<span id="wigroupsbuttons">
-				</span>
-				<span class="helpicon" style="margin:2px;margin-top:5px;margin-bottom:5px;font-size: 9px;">?<span
-					class="helptext">WorldInfo Groups can be used to segment data, e.g. entries for a specific place, person or event. Each entire group can be toggled on/off on demand.</span></span>
-				<span class="justifyright flex-push-right">
-				<button type="button" style="padding:4px;margin:2px;margin-top:4px;margin-bottom:4px;" class="btn bluebtn widelbtn" id="wiadd" onclick="add_wi()">[+Entry]</button>
-				</span>
+					<span id="wigroupsbuttons">
+					</span>
+					<span class="helpicon" style="margin:2px;margin-top:5px;margin-bottom:5px;font-size: 9px;">?<span class="helptext">WorldInfo Groups can be used to segment data, e.g. entries for a specific place, person or event. Each entire group can be toggled on/off on demand.</span></span>
+					<span class="justifyright flex-push-right">
+						<button type="button" style="padding:4px;margin:2px;margin-top:4px;margin-bottom:4px;" class="btn bluebtn widelbtn" id="wiadd" onclick="add_wi()">[+Entry]</button>
+					</span>
 				</div>
 				<div class="wilist" id="wilist">
 				</div>
@@ -26792,26 +26833,26 @@ Be specific and avoid euphemisms/figures of speech.]
 				</div>
 
 				<div class="settinglabel" style="padding: 4px;">
-					<div class="justifyleft settingsmall">WI Insert Location <span class="helpicon">?<span
-						class="helptext">Controls where the world info should be inserted</span></span></div>
-				<select title="World Info Insert Location" style="height:16px;padding:0px;margin:0px 4px 0; width:90px;font-size:10px;" class="form-control" id="wi_insertlocation">
-					<option value="0">After Memory</option>
-					<option value="1">Before A/N</option>
-				</select></div>
+					<div class="justifyleft settingsmall">WI Insert Location <span class="helpicon">?<span class="helptext">Controls where the world info should be inserted</span></span></div>
+					<select title="World Info Insert Location" style="height:16px;padding:0px;margin:0px 4px 0; width:90px;font-size:10px;" class="form-control" id="wi_insertlocation">
+						<option value="0">After Memory</option>
+						<option value="1">Before A/N</option>
+					</select>
+				</div>
 
 				<div class="settinglabel" style="padding: 4px;">
-					<div class="justifyleft settingsmall">WI Search Depth <span class="helpicon">?<span
-						class="helptext">Controls how far back in the text to search for World Info Keys</span></span></div>
-				<select title="World Info Search Depth" style="height:16px;padding:0px;margin:0px 4px 0; width:90px;font-size:10px;" class="form-control" id="wi_searchdepth">
-					<option value="0">Full Context</option>
-					<option value="16384">Last 16384</option>
-					<option value="8192">Last 8192</option>
-					<option value="4096">Last 4096</option>
-					<option value="2048">Last 2048</option>
-					<option value="1024">Last 1024</option>
-					<option value="512">Last 512</option>
-					<option value="256">Last 256</option>
-				</select></div>
+					<div class="justifyleft settingsmall">WI Search Depth <span class="helpicon">?<span class="helptext">Controls how far back in the text to search for World Info Keys</span></span></div>
+					<select title="World Info Search Depth" style="height:16px;padding:0px;margin:0px 4px 0; width:90px;font-size:10px;" class="form-control" id="wi_searchdepth">
+						<option value="0">Full Context</option>
+						<option value="16384">Last 16384</option>
+						<option value="8192">Last 8192</option>
+						<option value="4096">Last 4096</option>
+						<option value="2048">Last 2048</option>
+						<option value="1024">Last 1024</option>
+						<option value="512">Last 512</option>
+						<option value="256">Last 256</option>
+					</select>
+				</div>
 
 				<div class="settinglabel" style="padding: 4px;">
 					<div class="justifyleft settingsmall" title="Controls whether the world info keys are matched in a case-sensitive way.">Case Sensitive Keys </div>
@@ -26819,11 +26860,11 @@ Be specific and avoid euphemisms/figures of speech.]
 				</div>
 			</div>
 
-			<div class="context_tab_container" id="documentdb_tab_container">
+			<div class="context_tab_container hidden" id="documentdb_tab_container">
 				<div class="settinglabel" style="padding: 4px;">Automatically search and include relevant snippets from a text document or history.</div>
 				<div class="settinglabel" style="padding: 4px;">
 					<div class="justifyleft settingsmall" title="Select TextDB Provider">Select TextDB Provider <span class="helpicon">?
-						<span class="helptext">Disabled does not use TextDB. Local TextDB does all searches directly in browser with strings. KoboldCpp Embeddings relies on a loaded Kcpp Embeddings model to generate embeddings. OpenAI Embeddings uses a remote OpenAI API to generate embeddings.</span></span></div>
+							<span class="helptext">Disabled does not use TextDB. Local TextDB does all searches directly in browser with strings. KoboldCpp Embeddings relies on a loaded Kcpp Embeddings model to generate embeddings. OpenAI Embeddings uses a remote OpenAI API to generate embeddings.</span></span></div>
 					<select title="Select TextDB Provider" style="height:20px;padding:0px;margin:0px 4px 0; width:150px;font-size:12px;" class="form-control" onchange="toggle_documentdb_provider()" id="documentdb_provider">
 						<option value="0">Disabled</option>
 						<option value="1">Local TextDB</option>
@@ -26843,31 +26884,31 @@ Be specific and avoid euphemisms/figures of speech.]
 
 				<div class="settinglabel" style="padding: 4px;">
 					<div class="justifyleft settingsmall" title="Delete Embedding Cache">Delete Embedding Cache <span class="helpicon">?
-						<span class="helptext">When embeddings are enabled, they get generated by the KCPP server and then are cached in the web browser. This button clears the browser cache.</span></span></div>
+							<span class="helptext">When embeddings are enabled, they get generated by the KCPP server and then are cached in the web browser. This button clears the browser cache.</span></span></div>
 					<button title="Delete Embedding cache" class="btn btn-primary" onclick="DBClearEmbeddings()" style="font-size:12px;padding:2px 2px;margin:0px 0 0;">Delete Cache</button>
 				</div>
 
 				<div class="settinglabel" style="padding: 4px;">
 					<div class="justifyleft settingsmall" title="Add document to TextDB">Add document to TextDB <span class="helpicon">?
-						<span class="helptext">Tries to extract the text from the document, adding (or overwriting) an existing document in the TextDB with the same name.</span></span></div>
+							<span class="helptext">Tries to extract the text from the document, adding (or overwriting) an existing document in the TextDB with the same name.</span></span></div>
 					<button title="Add Document to TextDB" class="btn btn-primary" onclick="addDocumentToTextDB()" style="font-size:12px;padding:2px 2px;margin:0px 0 0;">Add Doc to TextDB</button>
 				</div>
 
 				<div class="settinglabel" style="padding: 4px;">
 					<div class="justifyleft settingsmall" title="Search Includes Context History">Search Includes Context History <span class="helpicon">?
-						<span class="helptext">If enabled, the entire story/chat history is used as a searchable document.</span></span></div>
+							<span class="helptext">If enabled, the entire story/chat history is used as a searchable document.</span></span></div>
 					<input title="Search Context History" type="checkbox" id="documentdb_searchhistory" style="margin:0px 0 0;">
 				</div>
 
 				<div class="settingitem" style="width: unset;">
 					<div class="settinglabel" style="padding: 4px;">
 						<div class="justifyleft settingsmall">Num. Search Results <span class="helpicon">?<span class="helptext">Controls how many search results to retrieve from DB. Each search result is added to the context as a snippet of the DB
-						document.</span></span></div>
+									document.</span></span></div>
 						<input title="Number of Search Results" inputmode="numeric" class="justifyright flex-push-right settingsmall" id="documentdb_numresults" oninput="
-						document.getElementById('documentdb_numresults_slide').value = this.value; estimate_and_show_textDB_usage();">
+							document.getElementById('documentdb_numresults_slide').value = this.value; estimate_and_show_textDB_usage();">
 					</div>
 					<div><input title="Number of Search Results Slider" type="range" min="1" max="10" step="1" id="documentdb_numresults_slide" oninput="
-						document.getElementById('documentdb_numresults').value = this.value; estimate_and_show_textDB_usage();"></div>
+							document.getElementById('documentdb_numresults').value = this.value; estimate_and_show_textDB_usage();"></div>
 					<div class="settingminmax">
 						<div class="justifyleft">1</div>
 						<div class="justifyright">10</div>
@@ -26878,10 +26919,10 @@ Be specific and avoid euphemisms/figures of speech.]
 					<div class="settinglabel" style="padding: 4px;">
 						<div class="justifyleft settingsmall">Extra Text For Search <span class="helpicon">?<span class="helptext">Adds the specified amount of characters from the context before the last user message to the search query.</span></span></div>
 						<input title="Extra Text For Search" inputmode="numeric" class="justifyright flex-push-right settingsmall" id="documentdb_searchrange" oninput="
-						document.getElementById('documentdb_searchrange_slide').value = this.value;">
+							document.getElementById('documentdb_searchrange_slide').value = this.value;">
 					</div>
 					<div><input title="Extra Text For Search Slider" type="range" min="50" max="500" step="10" id="documentdb_searchrange_slide" oninput="
-						document.getElementById('documentdb_searchrange').value = this.value;"></div>
+							document.getElementById('documentdb_searchrange').value = this.value;"></div>
 					<div class="settingminmax">
 						<div class="justifyleft">50</div>
 						<div class="justifyright">500</div>
@@ -26892,10 +26933,10 @@ Be specific and avoid euphemisms/figures of speech.]
 					<div class="settinglabel" style="padding: 4px;">
 						<div class="justifyleft settingsmall">Snippet Size <span class="helpicon">?<span class="helptext">Controls the size (in characters) of each snippet taken from the documents.</span></span></div>
 						<input title="Snippet Size" inputmode="numeric" class="justifyright flex-push-right settingsmall" id="documentdb_chunksize" oninput="
-						document.getElementById('documentdb_chunksize_slide').value = this.value; estimate_and_show_textDB_usage();">
+							document.getElementById('documentdb_chunksize_slide').value = this.value; estimate_and_show_textDB_usage();">
 					</div>
 					<div><input title="Snippet Size Slider" type="range" min="100" max="3000" step="50" id="documentdb_chunksize_slide" oninput="
-						document.getElementById('documentdb_chunksize').value = this.value; estimate_and_show_textDB_usage();"></div>
+							document.getElementById('documentdb_chunksize').value = this.value; estimate_and_show_textDB_usage();"></div>
 					<div class="settingminmax">
 						<div class="justifyleft">100</div>
 						<div class="justifyright">3000</div>
@@ -26903,14 +26944,12 @@ Be specific and avoid euphemisms/figures of speech.]
 				</div>
 
 				<div class="settinglabel settingsmall" style="padding: 4px;" id="documentdb_snippetestimate"></div>
-				<div class="settinglabel settingsmall" style="padding: 4px;">Please note, as with world info this can cause context reprocessing.  It is recommended to have at least 8K context size and a good prompt processing speed to use this feature.</div>
+				<div class="settinglabel settingsmall" style="padding: 4px;">Please note, as with world info this can cause context reprocessing. It is recommended to have at least 8K context size and a good prompt processing speed to use this feature.</div>
 				<div class="settinglabel">
-					<div class="justifyleft"><br>TextDB Storage<span class="helpicon">?<span
-						class="helptext">Paste as much raw text data here as you like. E.g. background information, reference documents, etc. This text will populate the database that will be chunked and searched by TextDB. This can be split using "[DOCUMENT BREAK]" to split the overall database into smaller documents, and titles can be added with "[DOCUMENT BREAK][Title of document]This is the content of the document".</span></span>
+					<div class="justifyleft"><br>TextDB Storage<span class="helpicon">?<span class="helptext">Paste as much raw text data here as you like. E.g. background information, reference documents, etc. This text will populate the database that will be chunked and searched by TextDB. This can be split using "[DOCUMENT BREAK]" to split the overall database into smaller documents, and titles can be added with "[DOCUMENT BREAK][Title of document]This is the content of the document".</span></span>
 						<button type="button" class="btn btn-primary" style="font-size:10px;padding:2px 5px;margin-left:4px;margin:2px;" onclick="add_textdb_separator()">Add Document Separator</button></div>
 				</div>
-				<textarea title="Edit TextDB" class="form-control menuinput_multiline" oninput="estimate_and_show_textDB_usage()" id="documentdb_data" style="height: 120px;"
-					placeholder="Paste as much text data here as you like. This text will populate the database that will be searched by TextDB. This can be split using [DOCUMENT BREAK] to split the overall database into smaller documents, and titles can be added with [DOCUMENT BREAK][Title of document]This is the content of the document."></textarea>
+				<textarea title="Edit TextDB" class="form-control menuinput_multiline" oninput="estimate_and_show_textDB_usage()" id="documentdb_data" style="height: 120px;" placeholder="Paste as much text data here as you like. This text will populate the database that will be searched by TextDB. This can be split using [DOCUMENT BREAK] to split the overall database into smaller documents, and titles can be added with [DOCUMENT BREAK][Title of document]This is the content of the document."></textarea>
 			</div>
 			<div id="memorycontainerfooter" class="popupfooter">
 				<button type="button" class="btn btn-primary" onclick="confirm_memory();save_wi();commit_wi_changes();render_gametext();sync_multiplayer(true);hide_popups()">OK</button>
