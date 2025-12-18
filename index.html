@@ -18353,30 +18353,39 @@ Be specific and avoid euphemisms/figures of speech.]
 				let anote_dist = anote_strength;
 				let anote_insert_idx = truncated_context.length - anote_dist;
 				anote_insert_idx = clamp(anote_insert_idx, 0, truncated_context.length);
-				//try to align anote with a word boundary
-				const maxLookahead = 30;
-				let best_insert_idx = anote_insert_idx;
-				let insert_preference = 0;
-				for (let i = 0; i < maxLookahead && anote_insert_idx + i < truncated_context.length; ++i) {
-					const char = truncated_context[anote_insert_idx + i];
+
+				// MOD: Force alignment to Newline to prevent mid-sentence injection
+				// We scan backwards from the target depth to find the nearest paragraph break.
+				// This ensures AN is inserted between turns/paragraphs, not inside them.
+				let found_newline = false;
+				
+				// 1. Try scanning backwards (up to 500 chars) to find a clean break
+				for (let i = 0; i < 500 && (anote_insert_idx - i) > 0; ++i) {
+					const char = truncated_context[anote_insert_idx - i];
 					if (char == "\n") {
-						best_insert_idx = anote_insert_idx + i + 1;
-						insert_preference = 3;
+						anote_insert_idx = anote_insert_idx - i + 1; // Insert immediately after the newline found
+						found_newline = true;
 						break;
 					}
-					if (insert_preference<=1 && (char == "," || char == "!" || char == "." || char == "?")) {
-						best_insert_idx = anote_insert_idx + i + 1;
-						insert_preference = 2;
-					}
-					if (insert_preference==0 && (char == " ")) {
-						best_insert_idx = anote_insert_idx + i + 1;
-						insert_preference = 1;
+				}
+
+				// 2. If no newline found backwards (extremely long block), try scanning forwards
+				if(!found_newline) {
+					for (let i = 0; i < 500 && (anote_insert_idx + i) < truncated_context.length; ++i) {
+						const char = truncated_context[anote_insert_idx + i];
+						if (char == "\n") {
+							anote_insert_idx = anote_insert_idx + i + 1;
+							found_newline = true;
+							break;
+						}
 					}
 				}
-				if(insert_preference>0)
-				{
-					anote_insert_idx = best_insert_idx;
+				
+				// 3. If still no newline (context is one massive line), just append to very end to be safe
+				if(!found_newline) {
+					anote_insert_idx = truncated_context.length; 
 				}
+
 				anote_insert_idx = clamp(anote_insert_idx, 0, truncated_context.length);
 				truncated_context = truncated_context.slice(0, anote_insert_idx) + truncated_anote + truncated_context.slice(anote_insert_idx);
 				if(!is_using_kcpp_with_added_memory())
