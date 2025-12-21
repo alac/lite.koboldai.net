@@ -2895,6 +2895,33 @@ Current version indicated by LITEVER below.
 		z-index: 9999;
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 	}
+
+	.version-switcher {
+		display: flex;
+		gap: 5px;
+		margin: 5px 0;
+		flex-wrap: wrap;
+	}
+	.version-btn {
+		font-size: 10px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		background-color: var(--theme_color_tabs);
+		color: var(--theme_color_tabs_text);
+		border: 1px solid var(--theme_color_border);
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.version-btn.active {
+		background-color: var(--theme_color_highlight);
+		border-color: var(--theme_color_border_highlight);
+		font-weight: bold;
+	}
+	.version-btn.streaming {
+		border-color: var(--theme_color_glow_text);
+		box-shadow: 0 0 5px var(--theme_color_glow_text);
+	}
+
 	.bolded {
 		font-weight: bold;
 	}
@@ -3659,6 +3686,11 @@ Current version indicated by LITEVER below.
 	var retry_in_progress = false; //if true, and generation was INTERRUPTED, restore previous messages!
 	var redo_prev_text = []; //if we undo a retry, save a copy here so it can be reverted with redo
 	var pending_response_id = ""; //guid of response pending from horde server
+	// ------ START Parallel Versions ------
+	var parallel_draft_data = null; 
+	var active_requests_count = 0;
+	var request_slots = []; // Tracks [{controller: AbortController, genkey: string, status: string}]
+	// ------- END Parallel Versions -------
 	var poll_in_progress = false; //are we currently waiting for a text generation
 	var poll_ticks_passed = 0; //how much time passed after polling
 	var horde_poll_nearly_completed = false; //if true, increase polling rate
@@ -3986,6 +4018,7 @@ Current version indicated by LITEVER below.
 		last_summary_idx: -1, // Tracks the gametext index of the last summary
 		quick_replies: [
 		],
+		parallel_count: 1,
 	};
 
 	const defaultsettings = JSON.parse(JSON.stringify(localsettings));
@@ -6293,7 +6326,7 @@ Current version indicated by LITEVER below.
 		});
 		kai_poll_recoverykey = "";
 	}
-	function kobold_api_sync_req(sub_endpt,submit_payload,trackedgenid)
+	function kobold_api_sync_req(sub_endpt, submit_payload, slot_idx = 0)
 	{
 		let reqOpt = {
 		method: 'POST', // or 'PUT'
@@ -6314,11 +6347,28 @@ Current version indicated by LITEVER below.
 					last_stop_reason = "stop";
 				}
 				last_response_obj = JSON.parse(JSON.stringify(data));
-				if(pending_response_id=="" || pending_response_id==trackedgenid) //drop unrelated requests
-				{
+				if (parallel_draft_data) {
+					// Store the result in the specific parallel slot
+					parallel_draft_data.versions[slot_idx] = sync_response;
+
+					// Mirror to the main UI if this is the version currently being viewed
+					if (slot_idx === parallel_draft_data.active_idx) {
+						gametext_arr[parallel_draft_data.target_idx] = sync_response;
+					}
+
+					active_requests_count--;
+
+					// Only move to the finalization step once all parallel requests finish
+					if (active_requests_count <= 0) {
+						synchro_polled_response = parallel_draft_data.versions[parallel_draft_data.active_idx];
+						synchro_pending_stream = "";
+						poll_pending_response();
+					}
+				} else {
+					// Original single-request logic
 					synchro_polled_response = sync_response;
+					synchro_pending_stream = "";
 				}
-				synchro_pending_stream = "";
 			}
 			else {
 				//error occurred, maybe captcha failed
@@ -6345,23 +6395,30 @@ Current version indicated by LITEVER below.
 			console.error('Error:', error);
 			if(error.name!="AbortError") //aborts are silent
 			{
-				if(synchro_pending_stream!="" && lastcheckgenkey!="")
-				{
-					kai_poll_recoverykey = lastcheckgenkey;
-				}
-				flush_streaming_text();
-				if(kai_poll_recoverykey!="")
-				{
-					msgbox(`Error while submitting prompt: ${error}<br><br><a href="#" onclick="show_last_incomplete_kai_syncpoll_request()" class="color_blueurl">Click Here</a> to attempt to recover the last response. This is not guaranteed to work.`,"Error Encountered",true);
-				}else{
-					msgbox("Error while submitting prompt: " + error);
+				if (parallel_draft_data) {
+					active_requests_count--;
+					if (active_requests_count <= 0) {
+						poll_pending_response();
+					}
+				} else {
+					if(synchro_pending_stream!="" && lastcheckgenkey!="")
+					{
+						kai_poll_recoverykey = lastcheckgenkey;
+					}
+					flush_streaming_text();
+					if(kai_poll_recoverykey!="")
+					{
+						msgbox(`Error while submitting prompt: ${error}<br><br><a href="#" onclick="show_last_incomplete_kai_syncpoll_request()" class="color_blueurl">Click Here</a> to attempt to recover the last response. This is not guaranteed to work.`,"Error Encountered",true);
+					}else{
+						msgbox("Error while submitting prompt: " + error);
+					}
 				}
 			}
 			clear_poll_flags();
 			render_gametext();
 		});
 	}
-	function kobold_api_stream_sse(sub_endpt,submit_payload)
+	function kobold_api_stream_sse(sub_endpt, submit_payload, slot_idx = 0)
 	{
 		synchro_pending_stream = "";
 		let reqOpt =
@@ -6413,7 +6470,17 @@ Current version indicated by LITEVER below.
 					{
 						for (let event of chunk) {
 							if (event.event === 'message') {
-								synchro_pending_stream += event.data.token;
+								let token = event.data.token;
+								if (parallel_draft_data) {
+									parallel_draft_data.versions[slot_idx] += token;
+									// Only update main array if this is the version we are looking at
+									if (slot_idx === parallel_draft_data.active_idx) {
+										gametext_arr[parallel_draft_data.target_idx] = parallel_draft_data.versions[slot_idx];
+									}
+								} else {
+									synchro_pending_stream += token;
+								}
+
 								if(event.data.finish_reason=="stop")
 								{
 									last_stop_reason = "stop";
@@ -6438,9 +6505,21 @@ Current version indicated by LITEVER below.
 
 					let finish_actions = function()
 					{
-						synchro_polled_response = synchro_pending_stream;
-						synchro_pending_stream = "";
-						poll_pending_response();
+						if (parallel_draft_data) {
+							active_requests_count--;
+							request_slots[slot_idx].status = "done";
+							if (active_requests_count <= 0) {
+								// All done, finalize
+								let final_resp = parallel_draft_data.versions[parallel_draft_data.active_idx];
+								synchro_polled_response = final_resp;
+								poll_pending_response();
+							}
+						} else {
+							// Standard logic for single-request
+							synchro_polled_response = synchro_pending_stream;
+							synchro_pending_stream = "";
+							poll_pending_response();
+						}
 					};
 
 					//handle gen failures
@@ -6563,7 +6642,7 @@ Current version indicated by LITEVER below.
 			msgbox("Error while submitting prompt: " + error);
 		});
 	}
-	function oai_api_sync_req(targetep,oai_payload,oaiheaders)
+	function oai_api_sync_req(targetep,oai_payload,oaiheaders,slot_idx = 0)
 	{
 		fetch(targetep, {
 			method: 'POST',
@@ -6577,11 +6656,12 @@ Current version indicated by LITEVER below.
 			last_response_obj = JSON.parse(JSON.stringify(data));
 			if (custom_oai_key != "" && data.choices != null && data.choices.length > 0) {
 				let dch = data.choices[0];
+				let extractedText = "";
 				if (dch.text) {
-					synchro_polled_response = dch.text;
+					extractedText = dch.text;
 				}
 				else if (dch.message) {
-					synchro_polled_response = dch.message.content;
+					extractedText = dch.message.content;
 					let reasoningtxt = "";
 					if(dch.message.reasoning_content!=null && dch.message.reasoning_content!="") //vllm compat
 					{
@@ -6595,23 +6675,23 @@ Current version indicated by LITEVER below.
 					{
 						if(dch.message.content==null)
 						{
-							synchro_polled_response = reasoningtxt;
+							extractedText = reasoningtxt;
 						}
 						else
 						{
-							synchro_polled_response = `${localsettings.start_thinking_tag}${reasoningtxt}${localsettings.stop_thinking_tag}${dch.message.content}`;
+							extractedText = `${localsettings.start_thinking_tag}${reasoningtxt}${localsettings.stop_thinking_tag}${dch.message.content}`;
 						}
 					}
 
-					if(oaiemulatecompletionscontent!="" && synchro_polled_response!="" && synchro_polled_response.startsWith(oaiemulatecompletionscontent))
+					if(oaiemulatecompletionscontent!="" && extractedText!="" && extractedText.startsWith(oaiemulatecompletionscontent))
 					{
-						synchro_polled_response = synchro_polled_response.substring(oaiemulatecompletionscontent.length);
+						extractedText = extractedText.substring(oaiemulatecompletionscontent.length);
 						oaiemulatecompletionscontent = "";
 					}
 
-					if(localsettings.opmode==1 && gametext_arr.length>0 && synchro_polled_response!="")
+					if(localsettings.opmode==1 && gametext_arr.length>0 && extractedText!="")
 					{
-						synchro_polled_response = cleanup_story_completion(synchro_polled_response);
+						extractedText = cleanup_story_completion(extractedText);
 					}
 				}
 				else {
@@ -6619,6 +6699,20 @@ Current version indicated by LITEVER below.
 					clear_poll_flags();
 					render_gametext();
 					msgbox("Error, unknown OAI response");
+				}
+
+				if (parallel_draft_data) {
+					parallel_draft_data.versions[slot_idx] = extractedText;
+					if (slot_idx === parallel_draft_data.active_idx) {
+						gametext_arr[parallel_draft_data.target_idx] = extractedText;
+					}
+					active_requests_count--;
+					if (active_requests_count <= 0) {
+						synchro_polled_response = parallel_draft_data.versions[parallel_draft_data.active_idx];
+						poll_pending_response();
+					}
+				} else {
+					synchro_polled_response = extractedText;
 				}
 			}
 			else {
@@ -6636,32 +6730,36 @@ Current version indicated by LITEVER below.
 			msgbox("Error while submitting prompt: " + error);
 		});
 	}
-	function oai_api_stream_sse(sub_endpt,submit_payload,submit_headers)
-	{
-		synchro_pending_stream = "";
-		streaming_was_thinking = false;
+
+	function oai_api_stream_sse(sub_endpt, submit_payload, submit_headers, slot_idx = 0) {
+		// Move this inside so each parallel request has its own state
+		let streaming_was_thinking = false; 
+		
+		// Use slot-specific or global buffer
+		if (!parallel_draft_data) {
+			synchro_pending_stream = "";
+		}
+		
 		let logprobs_content_arr = [];
-		let reqOpt =
-		{method: 'POST',
-		headers: submit_headers,
-		body: JSON.stringify(submit_payload)};
-		if(globalabortcontroller)
-		{
+		let reqOpt = {
+			method: 'POST',
+			headers: submit_headers,
+			body: JSON.stringify(submit_payload)
+		};
+		if (globalabortcontroller) {
 			reqOpt.signal = globalabortcontroller.signal;
 		}
 		let cached_stop_seq = get_stop_sequences();
+		
 		fetch(sub_endpt, reqOpt)
 		.then(x => {
-			if(x.ok)
-			{
+			if (x.ok) {
 				return x;
-			}else{
+			} else {
 				return x.text().then(errdat => {
 					throw new Error('Error while SSE streaming: ' + errdat);
-					return null;
 				}).catch(err => {
 					throw new Error('Error while SSE streaming: ' + (x.statusText) + '\n' + err);
-					return null;
 				});
 			}
 		})
@@ -6674,14 +6772,13 @@ Current version indicated by LITEVER below.
 				},
 				transform(chunk, ctrl) {
 					ctrl.buf += chunk;
-					if(chunk)
-					{
+					if (chunk) {
 						last_response_streamlog += chunk;
 					}
 					let evs = [];
 					let m;
 					while ((m = /^data: ?(.*)(\r?\n){2}/m.exec(ctrl.buf)) !== null) {
-						try{evs.push({data: JSON.parse(m[1])});} catch (e) {
+						try { evs.push({ data: JSON.parse(m[1]) }); } catch (e) {
 							console.log("Cannot parse a chunk: " + chunk);
 						}
 						ctrl.buf = ctrl.buf.substring(m.index + m[0].length);
@@ -6693,172 +6790,154 @@ Current version indicated by LITEVER below.
 			}))
 			.pipeTo(new WritableStream({
 				write(chunk) {
-					let was_empty = (synchro_pending_stream=="");
-					//cut stream if aborted
-					if(pending_response_id && pending_response_id != "-1" && pending_response_id != "")
-					{
-						for (let event of chunk) {
-							//for gemini
-							if (event.data && event.data.candidates && event.data.candidates.length>0) {
-								if(event.data.candidates[0].content && event.data.candidates[0].content.parts && event.data.candidates[0].content.parts.length>0)
-								{
-									for(let x=0;x<event.data.candidates[0].content.parts.length;++x)
-									{
-										if(!synchro_polled_respimg && event.data.candidates[0].content.parts[x].inlineData && event.data.candidates[0].content.parts[x].inlineData.data)
-										{
-											if(!event.data.candidates[0].content.parts[x].thought) //ignore thought images
-											{
-												synchro_polled_respimg = event.data.candidates[0].content.parts[x].inlineData.data;
-											}
-										}
-										if(event.data.candidates[0].content.parts[x].thought)
-										{
-											streaming_was_thinking = true;
-										}
-										if(!event.data.candidates[0].content.parts[x].thought && streaming_was_thinking)
-										{
-											synchro_pending_stream = `${localsettings.start_thinking_tag}${synchro_pending_stream}${localsettings.stop_thinking_tag}`;
-											streaming_was_thinking = false;
-										}
-										if(!event.data.candidates[0].content.parts[x].text)
-										{
-											continue;
-										}
-										synchro_pending_stream += event.data.candidates[0].content.parts[x].text;
-									}
-								}
-								continue;
-							}
+					// Stop processing if batch was aborted
+					if (!pending_response_id || pending_response_id === "-1" || pending_response_id === "") {
+						trigger_abort_controller();
+						return;
+					}
 
-							//for oai
-							if (event.data && event.data.choices && event.data.choices.length>0) {
-								if(event.data.choices[0].text)
-								{
-									synchro_pending_stream += event.data.choices[0].text;
-								}
-								else if(event.data.choices[0].delta && event.data.choices[0].delta.content)
-								{
-									if(streaming_was_thinking)
-									{
+					for (let event of chunk) {
+						let token = "";
+						
+						// 1. Handle Gemini Format
+						if (event.data && event.data.candidates && event.data.candidates.length > 0) {
+							if (event.data.candidates[0].content && event.data.candidates[0].content.parts) {
+								for (let part of event.data.candidates[0].content.parts) {
+									if (part.thought) {
+										streaming_was_thinking = true;
+									}
+									if (!part.thought && streaming_was_thinking) {
+										// Transition from thinking to content
+										let wrap = `${localsettings.start_thinking_tag}${get_slot_text(slot_idx)}${localsettings.stop_thinking_tag}`;
+										set_slot_text(slot_idx, wrap);
 										streaming_was_thinking = false;
-										synchro_pending_stream = `${localsettings.start_thinking_tag}${synchro_pending_stream}${localsettings.stop_thinking_tag}`;
 									}
-									synchro_pending_stream += event.data.choices[0].delta.content;
-								}
-								else if(event.data.choices[0].delta && !event.data.choices[0].delta.content && event.data.choices[0].delta.reasoning_content!=null&& event.data.choices[0].delta.reasoning_content!="")
-								{
-									streaming_was_thinking = true;
-									synchro_pending_stream += event.data.choices[0].delta.reasoning_content;
-								}
-								else if(event.data.choices[0].delta && !event.data.choices[0].delta.content && event.data.choices[0].delta.reasoning!=null&& event.data.choices[0].delta.reasoning!="")
-								{
-									streaming_was_thinking = true;
-									synchro_pending_stream += event.data.choices[0].delta.reasoning;
-								}
-
-								//collect logprobs if detected
-								if(event.data.choices[0].logprobs && event.data.choices[0].logprobs.content && event.data.choices[0].logprobs.content.length>0)
-								{
-									logprobs_content_arr = logprobs_content_arr.concat(event.data.choices[0].logprobs.content);
-								}
-
-								//mistral prefill interception
-								if(oaiemulatecompletionscontent!="" && synchro_pending_stream!="" && synchro_pending_stream.startsWith(oaiemulatecompletionscontent))
-								{
-									synchro_pending_stream = synchro_pending_stream.substring(oaiemulatecompletionscontent.length);
-									oaiemulatecompletionscontent = "";
-								}
-
-								if(event.data.choices[0].finish_reason=="stop")
-								{
-									last_stop_reason = "stop";
-								}
-							}
-
-							//potentially trigger an early stopping
-							for(let i=0;i<cached_stop_seq.length;++i)
-							{
-								let cur = cached_stop_seq[i];
-								if(!cur || cur.trim()=="")
-								{
-									continue;
-								}
-								if(synchro_pending_stream.includes(cur) && synchro_pending_stream.trim().indexOf(cur) > 1) //don't trigger early stopping if the match is very early
-								{
-									cached_stop_seq = [];
-									let need_clean_output = (synchro_pending_stream!="" && localsettings.opmode==1 && gametext_arr.length>0 && document.getElementById("useoaichatcompl").checked);
-									if(need_clean_output)
-									{
-										synchro_pending_stream = cleanup_story_completion(synchro_pending_stream);
-									}
-									flush_streaming_text();
-									clear_poll_flags();
-									trigger_abort_controller();
-									console.log("Somehow a stop seq was generated. Aborting...");
-									break;
+									token += part.text || "";
 								}
 							}
 						}
+						// 2. Handle OAI Format
+						else if (event.data && event.data.choices && event.data.choices.length > 0) {
+							let delta = event.data.choices[0].delta;
+							if (delta) {
+								if (delta.content) {
+									if (streaming_was_thinking) {
+										streaming_was_thinking = false;
+										let wrap = `${localsettings.start_thinking_tag}${get_slot_text(slot_idx)}${localsettings.stop_thinking_tag}`;
+										set_slot_text(slot_idx, wrap);
+									}
+									token = delta.content;
+								} else if (delta.reasoning_content || delta.reasoning) {
+									streaming_was_thinking = true;
+									token = delta.reasoning_content || delta.reasoning;
+								}
+							}
+
+							if (event.data.choices[0].logprobs && event.data.choices[0].logprobs.content) {
+								logprobs_content_arr = logprobs_content_arr.concat(event.data.choices[0].logprobs.content);
+							}
+							if (event.data.choices[0].finish_reason == "stop") {
+								last_stop_reason = "stop";
+							}
+						}
+
+						// Apply the token to the correct slot
+						if (token) {
+							append_to_slot(slot_idx, token);
+						}
+
+						// Check for early stop sequences
+						let currentFullText = get_slot_text(slot_idx);
+						for (let seq of cached_stop_seq) {
+							if (seq && currentFullText.includes(seq) && currentFullText.trim().indexOf(seq) > 1) {
+								trigger_abort_controller();
+								break;
+							}
+						}
 					}
-					else
-					{
-						trigger_abort_controller();
-					}
-					if(was_empty && synchro_pending_stream!="")
-					{
-						render_gametext(false,false);
-					}
-					else
-					{
-						update_pending_stream_displays();
-					}
+					update_pending_stream_displays();
 				},
-				close() { //end of stream
-					synchro_polled_response = synchro_pending_stream;
-					let need_clean_output = (synchro_polled_response!="" && localsettings.opmode==1 && gametext_arr.length>0 && document.getElementById("useoaichatcompl").checked);
-					if(need_clean_output)
-					{
-						synchro_polled_response = cleanup_story_completion(synchro_polled_response);
-					}
-					synchro_pending_stream = "";
-					streaming_was_thinking = false;
-					if (logprobs_content_arr.length>0 && last_response_obj==null) {
-						//fake a last response obj
-						let fakedresponse = {
-							"artificial_response": true,
-							"results":[{"logprobs":{"content":logprobs_content_arr}}]
-						};
-						last_response_obj = fakedresponse;
-					}
-					poll_pending_response();
-					//handle gen failures
-					if(resp.status==503)
-					{
-						msgbox("Error while submitting prompt: Server appears to be busy.");
+				close() {
+					// Signal completion for this slot
+					if (parallel_draft_data) {
+						request_slots[slot_idx].status = "done";
+						active_requests_count--;
+						if (active_requests_count <= 0) {
+							finalize_parallel_batch(logprobs_content_arr);
+						}
+					} else {
+						synchro_polled_response = synchro_pending_stream;
+						synchro_pending_stream = "";
+						finalize_single_request(logprobs_content_arr);
 					}
 				},
 				abort(error) {
-					console.error('Error:', error);
-					if(error.name!="AbortError") //aborts are silent. slightly diff logic
-					{
-						flush_streaming_text();
-						msgbox("Error while submitting prompt: " + error);
-					}
-					clear_poll_flags();
-					render_gametext();
+					handle_stream_error(error, slot_idx);
 				},
 			}));
 		})
 		.catch((error) => {
-			console.error('Error:', error);
-			if(error.name!="AbortError") //aborts are silent. slightly diff logic
-			{
-				flush_streaming_text();
-				msgbox("Error while submitting prompt: " + error);
-			}
-			clear_poll_flags();
-			render_gametext();
+			handle_stream_error(error, slot_idx);
 		});
+	}
+
+	// Helper: Handle text appending for Parallel vs Single
+	function append_to_slot(slot_idx, token) {
+		if (parallel_draft_data) {
+			parallel_draft_data.versions[slot_idx] += token;
+			if (slot_idx === parallel_draft_data.active_idx) {
+				gametext_arr[parallel_draft_data.target_idx] = parallel_draft_data.versions[slot_idx];
+			}
+		} else {
+			synchro_pending_stream += token;
+		}
+	}
+
+	// Helper: Get text from slot
+	function get_slot_text(slot_idx) {
+		return parallel_draft_data ? parallel_draft_data.versions[slot_idx] : synchro_pending_stream;
+	}
+
+	// Helper: Set full text for slot (used for wrapping tags)
+	function set_slot_text(slot_idx, text) {
+		if (parallel_draft_data) {
+			parallel_draft_data.versions[slot_idx] = text;
+			if (slot_idx === parallel_draft_data.active_idx) {
+				gametext_arr[parallel_draft_data.target_idx] = text;
+			}
+		} else {
+			synchro_pending_stream = text;
+		}
+	}
+
+	function finalize_parallel_batch(logprobs) {
+		if (logprobs.length > 0 && last_response_obj == null) {
+			last_response_obj = { "artificial_response": true, "results": [{ "logprobs": { "content": logprobs } }] };
+		}
+		synchro_polled_response = parallel_draft_data.versions[parallel_draft_data.active_idx];
+		poll_pending_response();
+	}
+
+	function finalize_single_request(logprobs) {
+		if (logprobs.length > 0 && last_response_obj == null) {
+			last_response_obj = { "artificial_response": true, "results": [{ "logprobs": { "content": logprobs } }] };
+		}
+		poll_pending_response();
+	}
+
+	function handle_stream_error(error, slot_idx) {
+		console.error('Stream Error:', error);
+		if (error.name !== "AbortError") {
+			flush_streaming_text();
+			msgbox("Error while submitting prompt: " + error);
+		}
+		if (parallel_draft_data) {
+			active_requests_count--;
+			if (active_requests_count <= 0) clear_poll_flags();
+		} else {
+			clear_poll_flags();
+		}
+		render_gametext();
 	}
 
 	function playbeep() {
@@ -11142,6 +11221,7 @@ Current version indicated by LITEVER below.
 			document.getElementById("welcomecontainer").classList.contains("hidden") &&
 			document.getElementById("dynatempcontainer").classList.contains("hidden") &&
 			document.getElementById("secondepsamplecontainer").classList.contains("hidden") &&
+			document.getElementById("parallel_config_container").classList.contains("hidden") &&
 			document.getElementById("admincontainer").classList.contains("hidden")
 		);
 	}
@@ -11185,6 +11265,7 @@ Current version indicated by LITEVER below.
 		document.getElementById("dynatempcontainer").classList.add("hidden");
 		document.getElementById("secondepsamplecontainer").classList.add("hidden");
 		document.getElementById("admincontainer").classList.add("hidden");
+		document.getElementById("parallel_config_container").classList.add("hidden");
 		stop_webcam();
 		mainmenu_untab(false);
 	}
@@ -11550,6 +11631,62 @@ Current version indicated by LITEVER below.
 		}
 
 	}
+
+	// ------ START Parallel Versions ------
+	function show_parallel_config() {
+		mainmenu_untab(true);
+		document.getElementById("parallel_count_select").value = localsettings.parallel_count;
+		document.getElementById("parallel_config_container").classList.remove("hidden");
+	}
+
+	function confirm_parallel_config() {
+		localsettings.parallel_count = parseInt(document.getElementById("parallel_count_select").value);
+		autosave();
+		hide_popups();
+		showToast(`Parallel generation set to ${localsettings.parallel_count}x`);
+	}
+
+	function clear_parallel_drafts() {
+		parallel_draft_data = null;
+		active_requests_count = 0;
+		request_slots = [];
+		trigger_abort_controller(); // Kill existing ones
+	}
+
+	function switch_parallel_version(new_idx) {
+		if (!parallel_draft_data || new_idx === parallel_draft_data.active_idx) return;
+		
+		// Update active version
+		parallel_draft_data.active_idx = new_idx;
+		
+		// Sync the main story array to the selected variation
+		let target = parallel_draft_data.target_idx;
+		if (gametext_arr[target] !== undefined) {
+			gametext_arr[target] = parallel_draft_data.versions[new_idx] || "";
+		}
+		
+		render_gametext(false, false); // Shallow refresh
+	}
+
+	function generate_version_switcher_html() {
+		if (!parallel_draft_data) return "";
+
+		let html = `<div class="version-switcher unselectable">`;
+		for (let i = 0; i < parallel_draft_data.versions.length; i++) {
+			let isActive = (i === parallel_draft_data.active_idx);
+			let isStreaming = (request_slots[i] && request_slots[i].status === "streaming");
+			let btnClass = `version-btn${isActive ? " active" : ""}${isStreaming ? " streaming" : ""}`;
+			
+			// If a slot is empty and not streaming, it might have failed or be pending
+			let label = `V${i + 1}`;
+			if (isStreaming) label += " (Typing...)";
+
+			html += `<button type="button" class="${btnClass}" onclick="switch_parallel_version(${i})">${label}</button>`;
+		}
+		html += `</div>`;
+		return html;
+	}
+	// ------- END Parallel Versions -------
 
 	function toggle_manual_horde_worker()
 	{
@@ -16333,6 +16470,23 @@ Be specific and avoid euphemisms/figures of speech.]
 		flush_streaming_text();
 
 		console.log("Generation " + pending_response_id + " aborted");
+
+		// Kill all slots
+		if (request_slots && request_slots.length > 0) {
+			request_slots.forEach(slot => {
+				if (slot.controller) slot.controller.abort();
+				
+				// If it's a KoboldCpp backend, send a specific signal per genkey
+				if (custom_kobold_endpoint != "" && is_using_kcpp_with_streaming() && slot.genkey) {
+					fetch(apply_proxy_url(custom_kobold_endpoint + koboldcpp_abort_endpoint), {
+						method: 'POST',
+						headers: get_kobold_header(),
+						body: JSON.stringify({ "genkey": slot.genkey }),
+					}).catch(e => console.log("Abort signal failed for " + slot.genkey));
+				}
+			});
+		}
+
 		clear_poll_flags();
 		render_gametext();
 
@@ -17815,6 +17969,13 @@ Be specific and avoid euphemisms/figures of speech.]
 			if (newgen != "") {
 				gametext_arr.push(newgen);
 			}
+
+			// ------ START Parallel Versions ------
+			// Hard Commit: If we are starting any new generation cycle, 
+			// the alternatives for the PREVIOUS turn are now discarded.
+			clear_parallel_drafts(); 
+			// ------- END Parallel Versions -------
+
 			redo_arr = [];
 			retry_prev_text = [];
 			retry_preserve_last = true; //initially set to true
@@ -18760,6 +18921,324 @@ Be specific and avoid euphemisms/figures of speech.]
 		return submit_payload;
 	}
 
+	// ------ START Parallel Versions ------
+	function map_to_oai_payload(slot_payload, model_name) {
+		let scaled_rep_pen = 0;
+		if (slot_payload.params.presence_penalty > 0) {
+			scaled_rep_pen = slot_payload.params.presence_penalty;
+		} else {
+			scaled_rep_pen = (slot_payload.params.rep_pen - 1.0);
+		}
+
+		let oai_payload = {
+			"max_tokens": slot_payload.params.max_length,
+			"model": model_name,
+			"temperature": slot_payload.params.temperature,
+			"top_p": slot_payload.params.top_p
+		};
+
+		const targetep = apply_proxy_url(custom_oai_endpoint);
+
+		// Stop sequences
+		if (!targetep.toLowerCase().includes("api.x.ai")) {
+			oai_payload.stop = get_stop_sequences().slice(0, 4);
+		}
+
+		// Logprobs
+		if (localsettings.request_logprobs && !targetep.toLowerCase().includes("api.x.ai") && !targetep.toLowerCase().includes("api.mistral.ai")) {
+			if (document.getElementById("useoaichatcompl").checked) {
+				oai_payload.logprobs = true;
+				oai_payload.top_logprobs = 5;
+			} else {
+				oai_payload.logprobs = 5;
+			}
+		}
+
+		// Presence Penalty
+		if (!targetep.toLowerCase().includes("api.mistral.ai") && !targetep.toLowerCase().includes("api.x.ai")) {
+			oai_payload.presence_penalty = scaled_rep_pen;
+		}
+
+		// Non-standard fields (Featherless etc)
+		if (document.getElementById("useoainonstandard").checked || targetep.toLowerCase().includes("featherless.ai")) {
+			oai_payload.top_k = (slot_payload.params.top_k < 1 ? 300 : slot_payload.params.top_k);
+			oai_payload.min_p = localsettings.min_p;
+			if (slot_payload.params.sampler_seed >= 1) {
+				oai_payload.seed = slot_payload.params.sampler_seed;
+			}
+			oai_payload.top_a = localsettings.top_a;
+		}
+
+		// Logit Bias
+		if (slot_payload.params.logit_bias && JSON.stringify(slot_payload.params.logit_bias) != '{}') {
+			oai_payload.logit_bias = slot_payload.params.logit_bias;
+		}
+
+		// Thinking / Search Preview override (o1/gpt-5 logic)
+		let is_special_model = model_name.toLowerCase().startsWith("o1-") || model_name.toLowerCase() == "o1" || 
+							model_name.toLowerCase().startsWith("o3-") || model_name.toLowerCase() == "o3" || 
+							model_name.toLowerCase().includes("-search-preview") || model_name.toLowerCase().includes("gpt-5");
+		
+		if (is_special_model) {
+			oai_payload = { "model": model_name };
+		}
+
+		// Chat vs Completion branching
+		if (document.getElementById("useoaichatcompl").checked) {
+			let mainoaibody = slot_payload.prompt;
+			if (insertAIVisionImages.length > 0 || insertAIAudioSounds.length > 0) {
+				mainoaibody = [{ "type": "text", "text": mainoaibody }];
+				insertAIVisionImages.forEach(img => mainoaibody.push({ "type": "image_url", "image_url": { "url": img } }));
+				insertAIAudioSounds.forEach(audio => {
+					let format = audio.includes("mp3") || audio.includes("mpeg") ? "mp3" : "wav";
+					let data = audio.includes("base64,") ? audio.split("base64,")[1] : audio;
+					mainoaibody.push({ "type": "input_audio", "input_audio": { "data": data, "format": format } });
+				});
+			}
+
+			oai_payload.messages = [];
+			if (document.getElementById("jailbreakprompt").checked && document.getElementById("jailbreakprompttext").value != "") {
+				let role = document.getElementById("jailbreakprompttextrole").value;
+				oai_payload.messages.push({ "role": (role == 2 ? "system" : (role == 1 ? "assistant" : "user")), "content": document.getElementById("jailbreakprompttext").value });
+			}
+
+			if (localsettings.saved_oai_role != 3) {
+				let role = (localsettings.saved_oai_role == 2 ? "system" : (localsettings.saved_oai_role == 1 ? "assistant" : "user"));
+				oai_payload.messages.push({ "role": role, "content": mainoaibody });
+			} else {
+				let mhistory = repack_instruct_history(typeof mainoaibody === 'string' ? mainoaibody : mainoaibody[0].text);
+				if (mhistory.length > 0 && !mhistory[0].myturn) mhistory[0].myturn = true;
+				if (mhistory.length > 1 && mhistory[0].myturn && mhistory[1].myturn) {
+					mhistory[0].msg += "\n" + mhistory[1].msg;
+					mhistory.splice(1, 1);
+				}
+				mhistory.forEach(h => oai_payload.messages.push({ "role": (h.myturn ? "user" : "assistant"), "content": h.msg }));
+			}
+
+			if (document.getElementById("jailbreakprompt2").checked && document.getElementById("jailbreakprompttext2").value != "") {
+				let role = document.getElementById("jailbreakprompttext2role").value;
+				let addrole = (role == 2 ? "system" : (role == 1 ? "assistant" : "user"));
+				let postmsg = { "role": addrole, "content": document.getElementById("jailbreakprompttext2").value };
+				if (addrole == "assistant") {
+					if (targetep.toLowerCase().includes("api.deepseek.com") || targetep.toLowerCase().includes("api.mistral.ai")) postmsg["prefix"] = true;
+					else if (targetep.toLowerCase().includes(".moonshot.")) postmsg["partial"] = true;
+				}
+				oai_payload.messages.push(postmsg);
+			}
+		} else {
+			oai_payload.prompt = slot_payload.prompt;
+		}
+
+		return oai_payload;
+	}
+
+	function dispatch_claude_request(slot_payload, slot_idx) {
+		let actualep = (custom_claude_endpoint + claude_submit_endpoint_v3);
+		let sysprompt = document.getElementById("claudesystemprompt").value;
+		let assistantprompt = document.getElementById("claudejailbreakprompt").value;
+		let claudethinking = (document.getElementById("claudethinking").checked ? true : false);
+
+		let claude_payload = {
+			"model": custom_claude_model,
+			"messages": [],
+			"max_tokens": slot_payload.params.max_length,
+			"temperature": slot_payload.params.temperature,
+		};
+		claude_payload.messages.push({ "role": "user", "content": slot_payload.prompt });
+		if (sysprompt) { claude_payload.system = sysprompt; }
+
+		let claude_is_v4 = (custom_claude_model.toLowerCase().includes("claude-3-7") || custom_claude_model.toLowerCase().includes("claude-sonnet-4") || custom_claude_model.toLowerCase().includes("claude-haiku-4") || custom_claude_model.toLowerCase().includes("claude-opus-4"));
+		if (claudethinking && claude_is_v4) {
+			claude_payload.thinking = { "type": "enabled", "budget_tokens": 1024 };
+			claude_payload.max_tokens += 1024;
+			claude_payload.temperature = 1;
+		} else {
+			claude_payload.top_k = (slot_payload.params.top_k < 1 ? 300 : slot_payload.params.top_k);
+			claude_payload.top_p = slot_payload.params.top_p;
+		}
+
+		if (localsettings.opmode == 1) {
+			let inst = "Always respond with a direct partial continuation of the story immediately from the latest word.";
+			claude_payload.system = sysprompt ? sysprompt + "\n" + inst : inst;
+		}
+		if (assistantprompt) {
+			claude_payload.messages.push({ "role": "assistant", "content": assistantprompt });
+		}
+
+		let claudeheaders = {
+			'Content-Type': 'application/json',
+			'x-api-key': custom_claude_key,
+			'Authorization': 'Bearer ' + custom_claude_key,
+			'anthropic-dangerous-direct-browser-access': true,
+			'anthropic-version': '2023-06-01'
+		};
+
+		fetch(actualep, {
+			method: 'POST',
+			headers: claudeheaders,
+			body: JSON.stringify(claude_payload),
+			referrerPolicy: 'no-referrer',
+		})
+		.then((response) => response.json())
+		.then((data) => handle_sync_response(data, slot_idx, "claude"))
+		.catch((error) => handle_sync_error(error, slot_idx));
+	}
+
+	function dispatch_gemini_request(slot_payload, slot_idx) {
+		let mdlname = document.getElementById("custom_gemini_model").value;
+		let geminitopk = (slot_payload.params.top_k < 1 ? 100 : slot_payload.params.top_k);
+		geminitopk = Math.min(geminitopk, mdlname.includes("flash-8b") ? 40 : 100);
+
+		let prompt = slot_payload.prompt;
+		if (localsettings.opmode == 1) {
+			prompt += " \nASSISTANT: Here is a direct partial continuation of the story without repeating it: \nASSISTANT:";
+		}
+
+		let geminiparts = [];
+		insertAIVisionImages.forEach(img => geminiparts.push({ "inline_data": { "mime_type": "image/jpeg", "data": img.split("base64,")[1] } }));
+		insertAIAudioSounds.forEach(audio => {
+			let parts = audio.split(";base64,");
+			geminiparts.push({ "inline_data": { "mime_type": parts[0].split(":")[1], "data": parts[1] } });
+		});
+		geminiparts.push({ "text": prompt });
+
+		let payload = {
+			"contents": [{ "parts": geminiparts }],
+			"safetySettings": [
+				{ "category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF" },
+				{ "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF" },
+				{ "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "OFF" },
+				{ "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF" },
+				{ "category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "OFF" }
+			],
+			"generationConfig": {
+				"temperature": slot_payload.params.temperature,
+				"maxOutputTokens": slot_payload.params.max_length,
+				"topP": slot_payload.params.top_p,
+				"topK": geminitopk,
+				"candidateCount": 1,
+				"stopSequences": get_stop_sequences().slice(0, 4)
+			}
+		};
+
+		if (document.getElementById("usegeminiweb").checked) { payload["tools"] = [{ "google_search": {} }]; }
+		if ((mdlname.includes("gemini-2.5") && !mdlname.includes("image")) || mdlname.includes("gemini-3-")) {
+			if (!document.getElementById("usegeminithink").checked) {
+				payload["generationConfig"]["thinkingConfig"] = { "includeThoughts": false, "thinkingBudget": (mdlname.includes("gemini-2.5-pro") ? 128 : 0) };
+			} else {
+				payload["generationConfig"]["thinkingConfig"] = { "includeThoughts": true };
+			}
+		}
+
+		let sentrole = document.getElementById("geminiroledropdown").value;
+		if (sentrole != "") { payload.contents[0].role = sentrole; }
+		
+		let postfixtext = document.getElementById("gemini_postfix_text").value;
+		if (postfixtext != "" && sentrole != "") {
+			payload.contents.push({ "role": document.getElementById("gemini_postfix_role").value, "parts": [{ "text": postfixtext }] });
+		}
+
+		let sysinst = document.getElementById("gemini_system_instruction").value;
+		if (sysinst != "" && (mdlname.includes("gemini-1.5-") || mdlname.includes("gemini-2") || mdlname.includes("gemini-3") || mdlname.includes("gemini-exp-"))) {
+			payload["systemInstruction"] = { "role": "system", "parts": [{ "text": sysinst }] };
+		}
+
+		let targetep = default_gemini_base + mdlname + (is_browser_supports_sse() && localsettings.tokenstreammode != 0 ? default_gemini_stream_suffix : default_gemini_suffix) + custom_gemini_key;
+
+		if (is_browser_supports_sse() && localsettings.tokenstreammode != 0) {
+			oai_api_stream_sse(targetep, payload, { 'Content-Type': 'application/json' }, slot_idx);
+		} else {
+			fetch(targetep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+			.then(r => r.json())
+			.then(data => handle_sync_response(data, slot_idx, "gemini"))
+			.catch(e => handle_sync_error(e, slot_idx));
+		}
+	}
+
+	function dispatch_cohere_request(slot_payload, slot_idx) {
+		let scaled_rep_pen = slot_payload.params.presence_penalty > 0 ? slot_payload.params.presence_penalty : (slot_payload.params.rep_pen - 1.0);
+		let cohere_payload = {
+			"max_tokens": slot_payload.params.max_length,
+			"model": custom_cohere_model,
+			"presence_penalty": scaled_rep_pen,
+			"temperature": slot_payload.params.temperature,
+			"p": slot_payload.params.top_p,
+			"message": slot_payload.prompt
+		};
+
+		if (document.getElementById("useocoherepreamble").checked) { cohere_payload.preamble = document.getElementById("cohere_preamble").value; }
+		if (document.getElementById("usecohereweb").checked) {
+			cohere_payload.connectors = [{ "id": "web-search" }];
+			cohere_payload.max_tokens += 256;
+		}
+
+		fetch(default_cohere_base, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + custom_cohere_key },
+			body: JSON.stringify(cohere_payload),
+			referrerPolicy: 'no-referrer',
+		})
+		.then(r => r.json())
+		.then(data => handle_sync_response(data, slot_idx, "cohere"))
+		.catch(e => handle_sync_error(e, slot_idx));
+	}
+
+	function handle_sync_response(data, slot_idx, provider) {
+		let text = "";
+		if (provider === "claude") {
+			if (data.content && data.content.length > 0) {
+				data.content.forEach(c => {
+					if (c.text) text += c.text;
+					if (c.thinking) text += `${localsettings.start_thinking_tag}${c.thinking}${localsettings.stop_thinking_tag}`;
+				});
+			}
+		} else if (provider === "gemini") {
+			if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
+				data.candidates[0].content.parts.forEach(p => {
+					let partText = p.text || "";
+					if (p.thought) partText = `${localsettings.start_thinking_tag}${partText}${localsettings.stop_thinking_tag}`;
+					text += partText;
+				});
+			}
+		} else if (provider === "cohere") {
+			text = data.text || "";
+		}
+
+		if (localsettings.opmode == 1 && gametext_arr.length > 0 && text != "") {
+			text = cleanup_story_completion(text);
+		}
+
+		if (parallel_draft_data) {
+			parallel_draft_data.versions[slot_idx] = text;
+			if (slot_idx === parallel_draft_data.active_idx) {
+				gametext_arr[parallel_draft_data.target_idx] = text;
+			}
+			active_requests_count--;
+			if (active_requests_count <= 0) {
+				synchro_polled_response = parallel_draft_data.versions[parallel_draft_data.active_idx];
+				poll_pending_response();
+			}
+		} else {
+			// Single mode fallback
+			synchro_polled_response = text;
+			poll_pending_response();
+		}
+	}
+
+	function handle_sync_error(error, slot_idx) {
+		console.error(`Slot ${slot_idx} error:`, error);
+		if (parallel_draft_data) {
+			active_requests_count--;
+			if (active_requests_count <= 0) {
+				poll_pending_response();
+			}
+		} else {
+			clear_poll_flags();
+			render_gametext();
+			msgbox("Error while submitting prompt: " + error);
+		}
+	}
+
 	function dispatch_submit_generation(submit_payload, input_was_empty) //if input is not empty, always unban eos
 	{
 		console.log(submit_payload);
@@ -18769,7 +19248,24 @@ Be specific and avoid euphemisms/figures of speech.]
 		if (is_using_custom_ep()) {
 			console.log("submit custom api");
 
-			pending_response_id = "submit-v1-dummy-id-"+(Math.floor(1000 + Math.random() * 9000)).toString(); //dummy id, autogenerated
+			let count = localsettings.parallel_count || 1;
+			// Reset tracking for new batch
+			request_slots = [];
+			active_requests_count = count;
+
+			if (count > 1) {
+				parallel_draft_data = {
+					target_idx: gametext_arr.length, 
+					active_idx: 0,
+					versions: new Array(count).fill("")
+				};
+				gametext_arr.push(""); // Reserve the spot in history for switcher and content
+			} else {
+				parallel_draft_data = null;
+			}
+
+			// Use a unique ID to keep the UI in "Busy" mode until all slots finish
+			pending_response_id = "parallel-batch-" + Date.now();
 			poll_ticks_passed = 0;
 			poll_in_progress = false;
 			synchro_polled_response = null;
@@ -18778,687 +19274,87 @@ Be specific and avoid euphemisms/figures of speech.]
 			synchro_pending_stream = "";
 			streaming_was_thinking = false;
 
-			//if this is set, we don't use horde, use the custom endpoint instead
-			if (custom_kobold_endpoint != "") //handle for kai
-			{
-				//payload is just the params with prompt inside
-				let prompt = submit_payload.prompt;
-				submit_payload = submit_payload.params;
-				submit_payload.prompt = prompt;
+			for (let i = 0; i < count; i++) {
+				let slot_idx = i;
+				let slot_controller = new AbortController();
+				// Unique genkey per slot so KCPP can track/abort them individually
+				let slot_genkey = "KCPP_V" + slot_idx + "_" + (Math.floor(1000 + Math.random() * 9000)).toString();
+				
+				request_slots.push({
+					controller: slot_controller,
+					genkey: slot_genkey,
+					status: "streaming"
+				});
 
-				last_request_str = JSON.stringify(submit_payload);
-				last_response_obj = null;
-				last_response_streamlog = "";
-				if (localsettings.tokenstreammode==2 && is_using_kcpp_with_sse()) {
-					let sub_endpt = apply_proxy_url(custom_kobold_endpoint + kobold_custom_gen_stream_endpoint);
-					kobold_api_stream_sse(sub_endpt, submit_payload);
-				} else {
-					let sub_endpt = apply_proxy_url(custom_kobold_endpoint + kobold_custom_gen_endpoint);
-					let trackedgenid = pending_response_id; //if it changes, stop streaming
-					kobold_api_sync_req(sub_endpt, submit_payload, trackedgenid);
+				// Deep copy the payload to prevent slots from overwriting each other's keys/params
+				let slot_payload = JSON.parse(JSON.stringify(submit_payload));
+				
+				// Optional: Introduce slight variance in temperature for variations 2-5 
+				// if they are using the same model, to ensure different results.
+				if (count > 1 && i > 0 && slot_payload.params) {
+					slot_payload.params.temperature = Math.min(2.0, slot_payload.params.temperature + (i * 0.05));
+					slot_payload.params.sampler_seed = -1; // Force randomness
 				}
-				update_custom_kobold_endpoint_model_display();
-			}
-			else if (custom_oai_key != "")//handle for OAI
-			{
 
-				let targetep = apply_proxy_url(custom_oai_endpoint + oai_submit_endpoint);
+				// 1. KOBOLD / KCPP BRANCH
+				if (custom_kobold_endpoint != "") {
+					let prompt = slot_payload.prompt;
+					let final_params = slot_payload.params;
+					final_params.prompt = prompt;
+					final_params.genkey = slot_genkey; // Assign unique key
 
-				let scaled_rep_pen = 0;
-				if(submit_payload.params.presence_penalty > 0)
-				{
-					scaled_rep_pen = submit_payload.params.presence_penalty;
-				}else{
-					//original range between 1 and 3, scale to 0 and 2
-					scaled_rep_pen = (submit_payload.params.rep_pen - 1.0);
-				}
-				//logit bias prevents <|endoftext|>
-				let oai_payload =
-				{
-					"max_tokens": submit_payload.params.max_length,
-					"model": custom_oai_model,
-					"temperature": submit_payload.params.temperature,
-					"top_p": submit_payload.params.top_p
-				}
-				if(localsettings.request_logprobs && !targetep.toLowerCase().includes("api.x.ai") && !targetep.toLowerCase().includes("api.mistral.ai"))
-				{
-					if(document.getElementById("useoaichatcompl").checked || targetep.toLowerCase().includes("api.x.ai"))
-					{
-						oai_payload.logprobs = true;
-						oai_payload.top_logprobs = 5;
+					last_request_str = JSON.stringify(final_params);
+					last_response_obj = null;
+					last_response_streamlog = "";
+
+					if (localsettings.tokenstreammode == 2 && is_using_kcpp_with_sse()) {
+						let sub_endpt = apply_proxy_url(custom_kobold_endpoint + kobold_custom_gen_stream_endpoint);
+						kobold_api_stream_sse(sub_endpt, final_params, slot_idx);
 					} else {
-						oai_payload.logprobs = 5;
+						let sub_endpt = apply_proxy_url(custom_kobold_endpoint + kobold_custom_gen_endpoint);
+						kobold_api_sync_req(sub_endpt, final_params, slot_idx);
+					}
+					update_custom_kobold_endpoint_model_display();
+				}
+				// 2. OPENAI BRANCH
+				else if (custom_oai_key != "") {
+					let oaiheaders = { 'Content-Type': 'application/json' };
+					if (custom_oai_key != "" && custom_oai_key != dummy_api_key) {
+						oaiheaders['Authorization'] = 'Bearer ' + custom_oai_key;
+					}
+					
+					// Re-calculating target endpoint logic for this slot
+					let isChat = document.getElementById("useoaichatcompl").checked;
+					let targetep = apply_proxy_url(custom_oai_endpoint + (isChat ? oai_submit_endpoint_chat : oai_submit_endpoint));
+					
+					// Standard OAI mapping (shortened for brevity, use existing mapping logic here)
+					let oai_payload = map_to_oai_payload(slot_payload, custom_oai_model); 
+					
+					last_request_str = JSON.stringify(oai_payload);
+					if (is_browser_supports_sse() && localsettings.tokenstreammode != 0) {
+						oai_payload.stream = true;
+						oai_api_stream_sse(targetep, oai_payload, oaiheaders, slot_idx);
+					} else {
+						oai_api_sync_req(targetep, oai_payload, oaiheaders, slot_idx);
 					}
 				}
-				if(!targetep.toLowerCase().includes("api.x.ai"))
-				{
-					//grok has no support for stop
-					oai_payload.stop = get_stop_sequences().slice(0, 4); //lets try adding stop sequences, limit to first 4
+				// 3. CLAUDE BRANCH
+				else if (custom_claude_key != "") {
+					// (Map and dispatch to claude_api_sync_req with slot_idx)
+					dispatch_claude_request(slot_payload, slot_idx);
 				}
-				if(!targetep.toLowerCase().includes("api.mistral.ai") && !targetep.toLowerCase().includes("api.x.ai"))
-				{
-					//mistral api does not support presence pen
-					oai_payload.presence_penalty = scaled_rep_pen;
+				// 4. GEMINI BRANCH
+				else if (custom_gemini_key != "") {
+					// (Map and dispatch to gemini_api_sync_req with slot_idx)
+					dispatch_gemini_request(slot_payload, slot_idx);
 				}
-				if(document.getElementById("useoainonstandard").checked || targetep.toLowerCase().includes("featherless.ai"))
-				{
-					//featherless api supports additional fields, include them
-					oai_payload.top_k = (submit_payload.params.top_k<1?300:submit_payload.params.top_k);
-					oai_payload.min_p = localsettings.min_p;
-					if(submit_payload.params.sampler_seed>=1)
-					{
-						oai_payload.seed = submit_payload.params.sampler_seed;
-					}
-					oai_payload.top_a = localsettings.top_a;
-				}
-				if(submit_payload.params.logit_bias && JSON.stringify(submit_payload.params.logit_bias) != '{}')
-				{
-					oai_payload.logit_bias = submit_payload.params.logit_bias;
-				}
-
-				let is_using_o1 = custom_oai_model.toLowerCase().startsWith("o1-") || custom_oai_model.toLowerCase()=="o1" || custom_oai_model.toLowerCase().startsWith("o3-") || custom_oai_model.toLowerCase()=="o3" || custom_oai_model.toLowerCase().startsWith("o4-") || custom_oai_model.toLowerCase()=="o4";
-				let is_using_4o_search = custom_oai_model.toLowerCase().includes("-search-preview");
-				let is_using_gpt5 = custom_oai_model.toLowerCase().includes("gpt-5");
-				if(is_using_o1 || is_using_4o_search || is_using_gpt5)
-				{
-					//o1 does not support ANY customization
-					oai_payload =
-					{
-						//remove max tokens due to huge amount needed
-						//"max_completion_tokens": submit_payload.params.max_length,
-						"model": custom_oai_model
-					}
-				}
-
-				if (document.getElementById("useoaichatcompl").checked) {
-
-					// let reasoneffort = document.getElementById("oaireasoningeffort").value;
-					// if(reasoneffort && reasoneffort!="none")
-					// {
-					// 	oai_payload.reasoning_effort = reasoneffort;
-					// }
-
-					let mainoaibody = submit_payload.prompt; //can be string or array
-					if(insertAIVisionImages.length>0 || insertAIAudioSounds.length>0)
-					{
-						mainoaibody = [
-							{
-								"type": "text",
-								"text": mainoaibody
-							}
-						];
-						for(let i=0;i<insertAIVisionImages.length;++i)
-						{
-							let oaiimg = {
-								"type": "image_url",
-								"image_url": {
-									"url": insertAIVisionImages[i]
-								}
-							};
-							mainoaibody.push(oaiimg);
-						}
-						for(let i=0;i<insertAIAudioSounds.length;++i)
-						{
-							let curr = insertAIAudioSounds[i];
-							let format = "wav";
-							if(curr.includes("base64,"))
-							{
-								let parts = curr.split("base64,");
-								curr = parts[1];
-								format = (parts[0].includes("mp3")||parts[0].includes("mpeg"))?"mp3":"wav";
-							}
-							let oaiimg = {
-								"type": "input_audio",
-								"input_audio": {
-									"data": curr,
-									"format": format
-								}
-							};
-							mainoaibody.push(oaiimg);
-						}
-					}
-
-					oai_payload.messages = [];
-					targetep = apply_proxy_url(custom_oai_endpoint + oai_submit_endpoint_chat);
-					if (document.getElementById("jailbreakprompt") && document.getElementById("jailbreakprompt").checked && document.getElementById("jailbreakprompttext").value!="") {
-						let addrole = document.getElementById("jailbreakprompttextrole").value;
-						addrole = ((addrole==2)?"system":(addrole==1?"assistant":"user"));
-						oai_payload.messages.push({ "role": addrole, "content": document.getElementById("jailbreakprompttext").value });
-					}
-
-					if(localsettings.saved_oai_role!=3) //except auto role
-					{
-						let myrole = (localsettings.saved_oai_role==2)?"system":(localsettings.saved_oai_role==1?"assistant":"user");
-						oai_payload.messages.push({ "role": myrole, "content": mainoaibody });
-					}
-					else //auto role
-					{
-						let mhistory = null;
-						if (typeof mainoaibody === 'string' || mainoaibody instanceof String)
-						{
-							mhistory = repack_instruct_history(mainoaibody);
-						}
-						else
-						{
-							//it's an object/array, so repack the text turn
-							let t1 = mainoaibody[0].text;
-							mhistory = repack_instruct_history(t1);
-						}
-
-						//many backends REFUSE to allow the assistant to go first. If the first turn belongs to assistant, we turn it into user
-						if(mhistory.length>0 && !mhistory[0].myturn)
-						{
-							mhistory[0].myturn = true;
-						}
-						//if both first and second turns are from user, merge them into one turn
-						if(mhistory.length>1 && mhistory[0].myturn && mhistory[1].myturn)
-						{
-							mhistory[0].msg += "\n"+mhistory[1].msg;
-							mhistory.splice(1, 1);
-						}
-
-						if(mhistory.length>0 && mainoaibody.length>1 && mainoaibody[1].type && mainoaibody[1].type!="text")
-						{
-							mhistory[0].msg = [{type: 'text', text: mhistory[0].msg}];
-							for(let i=1;i<mainoaibody.length;++i)
-							{
-								mhistory[0].msg.push(mainoaibody[i]);
-							}
-						}
-
-
-						for(let i=0;i<mhistory.length;++i)
-						{
-							oai_payload.messages.push({ "role": (mhistory[i].myturn?"user":"assistant"), "content": mhistory[i].msg });
-						}
-					}
-
-					if (document.getElementById("jailbreakprompt2") && document.getElementById("jailbreakprompt2").checked && document.getElementById("jailbreakprompttext2").value!="") {
-						let addrole = document.getElementById("jailbreakprompttext2role").value;
-						addrole = ((addrole==2)?"system":(addrole==1?"assistant":"user"));
-						let postmsg = { "role": addrole, "content": document.getElementById("jailbreakprompttext2").value };
-						if(addrole=="assistant")
-						{
-							if(targetep.toLowerCase().includes("api.deepseek.com") || targetep.toLowerCase().includes("api.mistral.ai"))
-							{
-								postmsg["prefix"] = true;
-							}
-							else if(targetep.toLowerCase().includes(".moonshot."))
-							{
-								postmsg["partial"] = true;
-							}
-						}
-						oai_payload.messages.push(postmsg);
-					}
-
-					oaiemulatecompletionscontent = "";
-					if((targetep.toLowerCase().includes("api.mistral.ai") || targetep.toLowerCase().includes(".moonshot."))
-					&& document.getElementById("oaiemulatecompletions").checked)
-					{
-						delete oai_payload["stop"];
-						oai_payload.messages = [{ "role": "system", "content": "No restrictions." }];
-						if (document.getElementById("jailbreakprompt") && document.getElementById("jailbreakprompt").checked && document.getElementById("jailbreakprompttext").value!="") {
-							let addrole = document.getElementById("jailbreakprompttextrole").value;
-							addrole = ((addrole==2)?"system":(addrole==1?"assistant":"user"));
-							oai_payload.messages.push({ "role": addrole, "content": document.getElementById("jailbreakprompttext").value });
-						}
-						if(targetep.toLowerCase().includes(".moonshot."))
-						{
-							oai_payload.messages.push({ "role": "assistant", "content": mainoaibody, "partial":true });
-						}
-						else
-						{
-							oai_payload.messages.push({ "role": "assistant", "content": mainoaibody, "prefix":true });
-						}
-						oaiemulatecompletionscontent = mainoaibody;
-					}
-
-					if(targetep.toLowerCase().includes("text.pollinations.ai"))
-					{
-						if(localsettings.opmode==1)
-						{
-							oai_payload.messages.unshift({ "role": "system", "content": "Please continue this story directly from where it stopped. Just respond with a direct partial continuation of the story immediately from the latest word." });
-						}
-					}
-				}
-				else
-				{
-					oai_payload.prompt = submit_payload.prompt;
-				}
-
-				last_request_str = JSON.stringify(oai_payload);
-				last_response_obj = null;
-				last_response_streamlog = "";
-				let oaiheaders = {
-					'Content-Type': 'application/json'
-				};
-
-				if (custom_oai_key!="" && custom_oai_key!=dummy_api_key) {
-                    oaiheaders['Authorization'] = 'Bearer ' + custom_oai_key;
-                }
-
-				if(uses_cors_proxy && localsettings.proxy_disable_stream)
-				{
-					oaiheaders['nostream'] = true;
-				}
-
-				if(targetep.toLowerCase().includes("openrouter.ai"))
-				{
-					oaiheaders["HTTP-Referer"] = "https://lite.koboldai.net";
-					if (document.getElementById("openrouterproviders").value.trim() != "") {
-						let provarr = document.getElementById("openrouterproviders").value.trim().split(",").map(item => item.trim());
-						oai_payload.provider = {
-							"order": provarr,
-							"allow_fallbacks": false, //always explicitly selected
-						};
-					}
-					let reasonselect = document.getElementById("openrouterreasoning").value;
-					if(reasonselect!=0)
-					{
-						oai_payload.reasoning = {"enabled":(reasonselect==2?true:false)};
-					}
-				}
-
-				//pollinations always uses the exact same url for text gen regardless
-				if(targetep.toLowerCase().includes("text.pollinations.ai"))
-				{
-					targetep = pollinations_text_endpoint;
-					oai_payload.private = true;
-					oai_payload.referrer = "koboldai";
-					oai_payload.seed = Math.floor(Math.random() * 99999999);
-				}
-
-				if(is_browser_supports_sse() && localsettings.tokenstreammode!=0)
-				{
-					oai_payload.stream = true;
-					oai_api_stream_sse(targetep,oai_payload,oaiheaders);
-				}
-				else
-				{
-					oai_api_sync_req(targetep,oai_payload,oaiheaders);
+				// 5. COHERE BRANCH
+				else if (custom_cohere_key != "") {
+					// (Map and dispatch to cohere_api_sync_req with slot_idx)
+					dispatch_cohere_request(slot_payload, slot_idx);
 				}
 			}
-			else if (custom_claude_key != "")//handle for Claude
-			{
-
-				let actualep = (custom_claude_endpoint + claude_submit_endpoint_v3);
-				let targetep = actualep;
-				let claude_payload = null;
-
-				let sysprompt = document.getElementById("claudesystemprompt").value;
-				let assistantprompt = document.getElementById("claudejailbreakprompt").value;
-				let claudethinking = (document.getElementById("claudethinking").checked?true:false);
-
-				claude_payload =
-				{
-					"model": custom_claude_model,
-					"messages": [],
-					"max_tokens": submit_payload.params.max_length,
-					"temperature": submit_payload.params.temperature,
-				};
-				claude_payload.messages.push({"role": "user", "content": submit_payload.prompt})
-				if(sysprompt)
-				{
-					claude_payload.system = sysprompt;
-				}
-
-				let claude_is_v4 = (custom_claude_model.toLowerCase().includes("claude-3-7")
-				|| custom_claude_model.toLowerCase().includes("claude-sonnet-4")
-				|| custom_claude_model.toLowerCase().includes("claude-haiku-4")
-				|| custom_claude_model.toLowerCase().includes("claude-opus-4"));
-
-				let claude_is_v4_5 = (custom_claude_model.toLowerCase().includes("claude-sonnet-4-5")
-				|| custom_claude_model.toLowerCase().includes("claude-haiku-4-5")
-				|| custom_claude_model.toLowerCase().includes("claude-opus-4-1"));
-
-				if(claudethinking && claude_is_v4)
-				{
-					claude_payload.thinking = {
-						"type": "enabled",
-						"budget_tokens": 1024
-					}
-					claude_payload.max_tokens += 1024;
-					claude_payload.temperature = 1;
-				}
-				else
-				{
-					//unsupported with thinking
-					claude_payload.top_k = (submit_payload.params.top_k<1?300:submit_payload.params.top_k);
-					claude_payload.top_p = submit_payload.params.top_p;
-
-					//for claude 4.5, if temperature is not 1, do not send top p
-					if(claude_is_v4_5)
-					{
-						if(claude_payload.temperature == 1)
-						{
-							delete claude_payload["temperature"];
-						}
-						else
-						{
-							delete claude_payload["top_p"];
-						}
-					}
-				}
-
-				if(localsettings.opmode==1)
-				{
-					claude_payload.system = "Always respond with a direct partial continuation of the story immediately from the latest word.";
-					if(sysprompt)
-					{
-						claude_payload.system = sysprompt +"\n"+ claude_payload.system;
-					}
-				}
-				if(assistantprompt)
-				{
-					claude_payload.messages.push({"role": "assistant", "content": assistantprompt});
-				}
-
-
-				last_request_str = JSON.stringify(claude_payload);
-				last_response_obj = null;
-				last_response_streamlog = "";
-
-				let claudeheaders = {
-					'Content-Type': 'application/json',
-					'x-api-key': custom_claude_key,
-					'Authorization': 'Bearer '+custom_claude_key,
-					'anthropic-dangerous-direct-browser-access': true,
-				};
-
-				claudeheaders["anthropic-version"] = '2023-06-01';
-
-				fetch(targetep, {
-					method: 'POST',
-					headers: claudeheaders,
-					body: JSON.stringify(claude_payload),
-					referrerPolicy: 'no-referrer',
-				})
-					.then((response) => response.json())
-					.then((data) => {
-						console.log("sync finished response: " + JSON.stringify(data));
-						last_response_obj = JSON.parse(JSON.stringify(data));
-						if(custom_claude_key != "" && data.content && data.content.length > 0)
-						{
-							let comp = "";
-							for(let i=0;i<data.content.length;++i)
-							{
-								if(data.content[i].text)
-								{
-									comp += data.content[i].text; //for claudev3
-								}
-								if(data.content[i].thinking)
-								{
-									comp += `${localsettings.start_thinking_tag}${data.content[i].thinking}${localsettings.stop_thinking_tag}`; //for claudev3
-								}
-							}
-							if(comp!="")
-							{
-								data.completion = comp;
-							}
-							if(localsettings.opmode==1 && gametext_arr.length>0 && data.completion!="")
-							{
-								data.completion = cleanup_story_completion(data.completion);
-							}
-						}
-						if (custom_claude_key != "" && data.completion != null && data.completion != "")
-						{
-							synchro_polled_response = data.completion;
-						}
-						else {
-							//error occurred, maybe captcha failed
-							console.error("error occurred in Claude generation");
-							clear_poll_flags();
-							render_gametext();
-							msgbox("Error occurred during text generation: " + format_json_error(data));
-						}
-					})
-					.catch((error) => {
-						console.error('Error:', error);
-						clear_poll_flags();
-						render_gametext();
-						msgbox("Error while submitting prompt: " + error);
-					});
-			}
-			else if (custom_gemini_key != "")//handle for Gemini
-			{
-				let mdlname = document.getElementById("custom_gemini_model").value;
-				let geminitopk = (submit_payload.params.top_k<1?100:submit_payload.params.top_k);
-				geminitopk = geminitopk>100?100:geminitopk;
-				if(mdlname.includes("flash-8b"))
-				{
-					geminitopk = geminitopk>40?40:geminitopk; //gemini 8b limits topk to 40
-				}
-
-				if(localsettings.opmode==1)
-				{
-					submit_payload.prompt = submit_payload.prompt + " \nASSISTANT: Here is a direct partial continuation of the story without repeating it: \nASSISTANT:";
-					submit_payload.params.max_length += 100; //add length
-				}
-
-
-				let geminiparts = [];
-
-				if (insertAIVisionImages.length > 0 || insertAIAudioSounds.length > 0) {
-					for (let i = 0; i < insertAIVisionImages.length; ++i) {
-						let imgd = insertAIVisionImages[i];
-						let oaiimg = {
-							"inline_data": {
-								"mime_type": "image/jpeg",
-								"data": (imgd.includes("base64,")?imgd.split("base64,")[1]:imgd)
-							}
-						};
-						geminiparts.push(oaiimg);
-					}
-					for (let i = 0; i < insertAIAudioSounds.length; ++i) {
-						let imgd = insertAIAudioSounds[i];
-						let format = "audio/wav"
-						if(imgd.includes(";base64,"))
-						{
-							let parts = imgd.split(";base64,");
-							imgd = parts[1];
-							format = parts[0].split(":")[1];
-						}
-						let oaiimg = {
-							"inline_data": {
-								"mime_type": format,
-								"data": imgd
-							}
-						};
-						geminiparts.push(oaiimg);
-					}
-				}
-
-				geminiparts.push({"text": submit_payload.prompt});
-
-				let payload = {
-				"contents": [
-					{
-					"parts": geminiparts
-					}
-				],
-				"safetySettings": [
-					{
-					"category": "HARM_CATEGORY_HARASSMENT",
-					"threshold": "OFF"
-					},
-					{
-					"category": "HARM_CATEGORY_HATE_SPEECH",
-					"threshold": "OFF"
-					},
-					{
-					"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-					"threshold": "OFF"
-					},
-					{
-					"category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-					"threshold": "OFF"
-					},
-					{
-					"category":"HARM_CATEGORY_CIVIC_INTEGRITY",
-					"threshold":"OFF"
-					}
-				],
-				"generationConfig": {
-					"temperature":submit_payload.params.temperature,
-					"maxOutputTokens": submit_payload.params.max_length,
-					"topP": submit_payload.params.top_p,
-					"topK": geminitopk,
-					"candidateCount":1,
-					"stopSequences": get_stop_sequences().slice(0, 4)
-				}
-				};
-
-				if(document.getElementById("usegeminiweb").checked)
-				{
-					payload["tools"] = [{"google_search": {}}];
-				}
-
-				if((mdlname.includes("gemini-2.5") && !mdlname.includes("image")) || mdlname.includes("gemini-3-"))
-				{
-					if(!document.getElementById("usegeminithink").checked)
-					{
-						//gemini pro cannot fully disable thinking
-						payload["generationConfig"]["thinkingConfig"] = {"includeThoughts": false, "thinkingBudget": (mdlname.includes("gemini-2.5-pro")?128:0)};
-					}
-					else
-					{
-						payload["generationConfig"]["thinkingConfig"] = {"includeThoughts": true};
-					}
-				}
-
-				let sentrole = document.getElementById("geminiroledropdown").value;
-				if(sentrole!="")
-				{
-					payload.contents = [{
-						"role":sentrole,
-						"parts":geminiparts
-					}];
-				}
-				let postfixrole = document.getElementById("gemini_postfix_role").value;
-				let postfixtext = document.getElementById("gemini_postfix_text").value;
-				if(postfixtext!="" && sentrole!="")
-				{
-					payload.contents.push({
-						"role":postfixrole,
-						"parts":[
-							{
-							"text": postfixtext
-							}
-						]
-					});
-				}
-
-				let sysinst = document.getElementById("gemini_system_instruction").value;
-				if(sysinst!="" && (mdlname.includes("gemini-1.5-") || mdlname.includes("gemini-2") || mdlname.includes("gemini-3") || mdlname.includes("gemini-exp-")))
-				{
-					payload["systemInstruction"] = {
-						"role": "system",
-						"parts": [
-						{
-							"text": sysinst
-						}
-						]
-					};
-				}
-
-				last_request_str = JSON.stringify(payload);
-				last_response_obj = null;
-				last_response_streamlog = "";
-
-				let geminiheaders = { 'Content-Type': 'application/json' };
-				if(is_browser_supports_sse() && localsettings.tokenstreammode!=0)
-				{
-					let targetep = default_gemini_base + mdlname + default_gemini_stream_suffix + custom_gemini_key;
-					oai_api_stream_sse(targetep,payload,geminiheaders);
-				}
-				else
-				{
-					let targetep = default_gemini_base + mdlname + default_gemini_suffix + custom_gemini_key;
-					gemini_api_sync_req(targetep,payload,geminiheaders);
-				}
-
-			}
-			else if (custom_cohere_key != "")//handle for Cohere
-			{
-				let targetep = default_cohere_base;
-
-				let scaled_rep_pen = 0;
-				if(submit_payload.params.presence_penalty > 0)
-				{
-					scaled_rep_pen = submit_payload.params.presence_penalty;
-				}else{
-					//original range between 1 and 3, scale to 0 and 2
-					scaled_rep_pen = (submit_payload.params.rep_pen - 1.0);
-				}
-
-				let cohere_payload =
-				{
-					"max_tokens": submit_payload.params.max_length,
-					"model": custom_cohere_model,
-					"presence_penalty": scaled_rep_pen,
-					"temperature": submit_payload.params.temperature,
-					"p": submit_payload.params.top_p,
-					"message": submit_payload.prompt
-				}
-
-				if (document.getElementById("useocoherepreamble").checked) {
-					cohere_payload.preamble = document.getElementById("cohere_preamble").value
-				}
-
-				if (document.getElementById("usecohereweb").checked) {
-					cohere_payload.connectors = [{"id": "web-search"}];
-					cohere_payload.max_tokens += 256;
-				}
-
-				last_request_str = JSON.stringify(cohere_payload);
-				last_response_obj = null;
-				last_response_streamlog = "";
-				let cohere_headers = {
-					'Content-Type': 'application/json',
-					'Authorization': 'Bearer ' + custom_cohere_key
-				};
-
-				fetch(targetep, {
-					method: 'POST',
-					headers: cohere_headers,
-					body: JSON.stringify(cohere_payload),
-					referrerPolicy: 'no-referrer',
-				})
-					.then((response) => response.json())
-					.then((data) => {
-						console.log("sync finished response: " + JSON.stringify(data));
-						last_response_obj = JSON.parse(JSON.stringify(data));
-						if (custom_cohere_key != "" && data && data.text) {
-							if (data.text) {
-								synchro_polled_response = data.text
-							}
-							else {
-								console.error("Error, unknown Cohere response");
-								clear_poll_flags();
-								render_gametext();
-								msgbox("Error, unknown Cohere response");
-							}
-						}
-						else {
-							//error occurred, maybe captcha failed
-							console.error("error occurred in Cohere generation");
-							clear_poll_flags();
-							render_gametext();
-							msgbox("Error occurred during text generation: " + format_json_error(data));
-						}
-					})
-					.catch((error) => {
-						console.error('Error:', error);
-						clear_poll_flags();
-						render_gametext();
-						msgbox("Error while submitting prompt: " + error);
-					});
-			}
-			else {
-				console.log("Unknown sync endpoint!");
-			}
-		}
-		else {
+		} else {
 			console.log("submit v2 api");
 			let apikeytouse = localsettings.my_api_key;
 			let clientagenttouse = default_client_agent;
@@ -20700,7 +20596,15 @@ Be specific and avoid euphemisms/figures of speech.]
 
 		if(gentxt!="")
 		{
-			gametext_arr.push(gentxt); //delete last message if retry is hit, since response was added
+			// ------ START Parallel Versions ------
+			// If we have a reserved parallel slot, update it instead of pushing
+			if (parallel_draft_data && gametext_arr[parallel_draft_data.target_idx] !== undefined) {
+				parallel_draft_data.versions[parallel_draft_data.active_idx] = gentxt;
+				gametext_arr[parallel_draft_data.target_idx] = gentxt;
+			} else {
+				gametext_arr.push(gentxt); 
+			}
+			// ------- END Parallel Versions -------
 			retry_preserve_last = false;
 		}
 		if(localsettings.beep_on)
@@ -22531,7 +22435,19 @@ Be specific and avoid euphemisms/figures of speech.]
 			if (inEditMode) {
 				fulltxt = concat_gametext(false, "", "%SpnStg%", "%SpnEtg%",true);
 			} else {
-				fulltxt = concat_gametext(false, "", "", "",true);
+				// Build Classic text with Switcher injection
+				fulltxt = "";
+				for (let i = 0; i < gametext_arr.length; i++) {
+					let chunk = escape_html(gametext_arr[i]);
+					
+					// If this is the turn with versions, wrap it and add the switcher
+					if (parallel_draft_data && i === parallel_draft_data.target_idx) {
+						let switcher = generate_version_switcher_html();
+						fulltxt += switcher + `%SpnStg%` + chunk + `%SpnEtg%`;
+					} else {
+						fulltxt += `%SpnStg%` + chunk + `%SpnEtg%`;
+					}
+				}
 				fulltxt = apply_display_only_regex(fulltxt);
 				fulltxt = replace_placeholders(fulltxt,true);
 			}
@@ -25668,6 +25584,15 @@ Be specific and avoid euphemisms/figures of speech.]
 
 		for(var i=0;i<chatunits.length;++i)
 		{
+			// In Aesthetic mode, we associate the switcher with the turn 
+			// that corresponds to our target index. 
+			// Note: repack logic indices may vary, but target_idx aligns with 
+			// the last AI turn usually.
+			let turn_switcher_html = "";
+			if (!isPreview && parallel_draft_data && i === chatunits.length - 1 && !chatunits[i].myturn) {
+				turn_switcher_html = generate_version_switcher_html();
+			}
+
 			// INSERT SUMMARY BOOKMARK
 			// Assuming you added localsettings.last_summary_idx logic
 			if (localsettings.last_summary_idx !== undefined && i == localsettings.last_summary_idx) {
@@ -25752,7 +25677,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			newbodystr += ` style='flex: 1; display:flex; padding: ${as.padding()}; margin: ${as.margin()}; min-height:${as.background_minHeight}px;`
 			+ ` font-size: ${as.font_size}px; flex-direction:column; align-items: ${as.centerHorizontally ? 'center' : 'flex-start'};`
 			+ ` justify-content: center; border-radius: ${as.rounded_bubbles ? '15px' : '0px'}'>`
-			+ `<span>${namepart}${curr.msg}</span></div></div>`;
+			+ `<span>${turn_switcher_html}${namepart}${curr.msg}</span></div></div>`;
 		}
 
 		return portraitsStyling + newbodystr.replaceAll(/(\r\n|\r|\n)/g,'<br>'); // Finally, convert newlines to HTML format and return the stylized string.
@@ -26622,6 +26547,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actbranch" onclick="btn_branch(this)">Branch</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia" onclick="add_media_btn_menu()">Add File</button>
 				<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch" onclick="toggle_websearch()">&nbsp;</button>
+				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_parallel" onclick="show_parallel_config()">Parallel</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast" onclick="show_edit_last()">Edit X</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_quickreply" onclick="show_quick_replies()">Quick Reply</button>
 			</div>
@@ -26673,6 +26599,7 @@ Be specific and avoid euphemisms/figures of speech.]
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actbranch2" onclick="btn_branch(this)">Branch</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia2" onclick="add_media_btn_menu()">Add File</button>
 						<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch2" onclick="toggle_websearch()">&nbsp;</button>
+						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_parallel2" onclick="show_parallel_config()">Parallel</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editmode" onclick="btn_editmode()">Edit</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast2" onclick="show_edit_last()">Edit X</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_quickreply" onclick="show_quick_replies()">Quick Reply</button>
@@ -29391,6 +29318,37 @@ Be specific and avoid euphemisms/figures of speech.]
 		</div>
 		<textarea id="quick_reply_editor" class="form-control" spellcheck="false" placeholder=":Label Name&#10;Text content to insert..."></textarea>
 	</div>
+
+	<!-- ------ START Parallel Versions ------ -->
+	<div class="popupcontainer flex hidden" id="parallel_config_container">
+		<div class="popupbg flex"></div>
+		<div class="nspopup flexsizevsmall">
+			<div class="popuptitlebar">
+				<div class="popuptitletext">Parallel Generation</div>
+			</div>
+			<div class="menutext">
+				<p>Generate multiple variations of the AI response simultaneously and pick the best one.</p>
+				<div class="settinglabel" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0;">
+					<span class="settingsmall">Variations to Generate:</span>
+					<select id="parallel_count_select" class="form-control" style="width: 80px; height: 30px;">
+						<option value="1">1 (Off)</option>
+						<option value="2">2</option>
+						<option value="3">3</option>
+						<option value="4">4</option>
+						<option value="5">5</option>
+					</select>
+				</div>
+				<div class="settingsdesctxt" style="margin-top: 10px; opacity: 0.7;">
+					Note: Parallel generation sends multiple requests. On local backends like KoboldCpp, this will process them one by one or in parallel depending on your server settings. <b>Not supported on AI Horde.</b>
+				</div>
+			</div>
+			<div class="popupfooter">
+				<button type="button" class="btn btn-primary" onclick="confirm_parallel_config()">OK</button>
+				<button type="button" class="btn btn-primary" onclick="hide_popups()">Cancel</button>
+			</div>
+		</div>
+	</div>
+	<!-- ------- END Parallel Versions ------- -->
 </body>
 
 <script id="pwa-setup">
