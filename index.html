@@ -4019,6 +4019,12 @@ Current version indicated by LITEVER below.
 		quick_replies: [
 		],
 		parallel_count: 1,
+		parallel_overrides: [
+			{enabled: false, model: ""}, // Slot 1 (2nd)
+			{enabled: false, model: ""}, // Slot 2 (3rd)
+			{enabled: false, model: ""}, // Slot 3 (4th)
+			{enabled: false, model: ""}, // Slot 4 (5th)
+		],
 	};
 
 	const defaultsettings = JSON.parse(JSON.stringify(localsettings));
@@ -11625,28 +11631,70 @@ Current version indicated by LITEVER below.
 		}
 
 	}
+	function render_parallel_override_rows() {
+		const container = document.getElementById("parallel_override_rows_container");
+		const count = parseInt(document.getElementById("parallel_count_select").value);
+		const isOAI = custom_oai_key !== "" || custom_claude_key !== "" || custom_gemini_key !== "" || custom_cohere_key !== "";
 
-	// ------ START Parallel Versions ------
+		if (!isOAI || count <= 1) {
+			document.getElementById("parallel_oai_extras").classList.add("hidden");
+			return;
+		}
+
+		document.getElementById("parallel_oai_extras").classList.remove("hidden");
+		let html = "";
+
+		for (let i = 1; i < count; i++) {
+			let saved = localsettings.parallel_overrides[i - 1] || { enabled: false, model: "" };
+			let label = (i === 1) ? "2nd" : (i === 2) ? "3rd" : (i + 1) + "th";
+
+			html += `
+			<div class="flex" style="gap: 10px; margin-bottom: 5px;">
+				<span class="settingsmall" style="width: 30px;">${label}:</span>
+				<input type="checkbox" id="para_over_check_${i}" ${saved.enabled ? "checked" : ""} title="Override model for this slot">
+				<select id="para_over_model_${i}" class="form-control parallel-override-model-select" style="height: 25px; font-size: 11px; padding: 2px;">
+					<option value="${saved.model}">${saved.model || "Select Model..."}</option>
+				</select>
+			</div>`;
+		}
+		container.innerHTML = html;
+
+		// Immediately populate these new dropdowns with cached data if available
+		if (cached_oai_model_list_data) {
+			update_oai_model_list(cached_oai_model_list_data);
+		}
+	}
+	function validate_model_availability(modelID) {
+		if (!modelID || modelID === "" || modelID === "custom") return false;
+		if (!cached_oai_model_list_data || !cached_oai_model_list_data.data) return true; // Assume true if we haven't fetched yet
+		return cached_oai_model_list_data.data.some(m => m.id === modelID);
+	}
 	function show_parallel_config() {
 		mainmenu_untab(true);
 		document.getElementById("parallel_count_select").value = localsettings.parallel_count;
+		render_parallel_override_rows(); // New call
 		document.getElementById("parallel_config_container").classList.remove("hidden");
 	}
-
 	function confirm_parallel_config() {
 		localsettings.parallel_count = parseInt(document.getElementById("parallel_count_select").value);
+		
+		for (let i = 1; i < localsettings.parallel_count; i++) {
+			localsettings.parallel_overrides[i - 1] = {
+				enabled: document.getElementById(`para_over_check_${i}`).checked,
+				model: document.getElementById(`para_over_model_${i}`).value
+			};
+		}
+		
 		autosave();
 		hide_popups();
 		showToast(`Parallel generation set to ${localsettings.parallel_count}x`);
 	}
-
 	function clear_parallel_drafts() {
 		parallel_draft_data = null;
 		active_requests_count = 0;
 		request_slots = [];
 		trigger_abort_controller(); // Kill existing ones
 	}
-
 	function switch_parallel_version(new_idx) {
 		if (!parallel_draft_data || new_idx === parallel_draft_data.active_idx) return;
 
@@ -11665,7 +11713,6 @@ Current version indicated by LITEVER below.
 
 		render_gametext(false, false); // Shallow refresh
 	}
-
 	function generate_version_switcher_html() {
 		if (!parallel_draft_data) return "";
 
@@ -11684,8 +11731,6 @@ Current version indicated by LITEVER below.
 		html += `</div>`;
 		return html;
 	}
-	// ------- END Parallel Versions -------
-
 	function toggle_manual_horde_worker()
 	{
 		let tmpkey = document.getElementById("apikey").value;
@@ -12010,47 +12055,59 @@ Current version indicated by LITEVER below.
 	}
 	function update_oai_model_list(data, dropdown)
 	{
-		var lastOption = dropdown.lastElementChild;
-		for (var i = dropdown.options.length - 1; i >= 0; i--) {
-			var option = dropdown.options[i];
-			dropdown.remove(option);
-		}
-		let selidx = 0;
-		
-		let favorites = [];
-		let others = [];
-		
-		for(var i = 0; i < data.data.length; i++) {
-			var mid = data.data[i].id;
-			if(localsettings.favorite_models.includes(mid)) {
-				favorites.push(mid);
-			} else {
-				others.push(mid);
+		// Internal helper to populate a single dropdown
+		const populate = (target) => {
+			if(!target) return;
+			const currentVal = target.value;
+			var lastOption = target.lastElementChild;
+			for (var i = target.options.length - 1; i >= 0; i--) {
+				var option = target.options[i];
+				target.remove(option);
 			}
-		}
-
-		favorites.sort();
-		others.sort();
-
-		let appendOpts = (list, isFav) => {
-			for(var i=0; i<list.length; ++i) {
-				var el = document.createElement("option");
-				el.textContent = (isFav ? "★ " : "") + list[i]; 
-				el.value = list[i];
-				if(localsettings.prev_custom_endpoint_model && list[i]==localsettings.prev_custom_endpoint_model)
-				{
-					selidx = dropdown.options.length; // Update index based on current length
-					document.getElementById("useoaichatcompl").checked = localsettings.prev_custom_endpoint_ischatcmpl;
+			let selidx = 0;
+			
+			let favorites = [];
+			let others = [];
+			
+			for(var i = 0; i < data.data.length; i++) {
+				var mid = data.data[i].id;
+				if(localsettings.favorite_models.includes(mid)) {
+					favorites.push(mid);
+				} else {
+					others.push(mid);
 				}
-				dropdown.appendChild(el);
 			}
-		}
 
-		appendOpts(favorites, true);
-		appendOpts(others, false);
+			favorites.sort();
+			others.sort();
 
-		dropdown.appendChild(lastOption);
-		dropdown.selectedIndex = selidx;
+			let appendOpts = (list, isFav) => {
+				for(var i=0; i<list.length; ++i) {
+					var el = document.createElement("option");
+					el.textContent = (isFav ? "★ " : "") + list[i]; 
+					el.value = list[i];
+					if(list[i] === currentVal) {
+						selidx = target.options.length;
+					}
+					target.appendChild(el);
+				}
+			}
+
+			appendOpts(favorites, true);
+			appendOpts(others, false);
+
+			if (lastOption) target.appendChild(lastOption);
+			target.selectedIndex = selidx;
+		};
+
+		// 1. Always update the primary dropdown
+		populate(get_custom_ep_model_dropdown());
+
+		// 2. Also update any visible parallel override dropdowns
+		const overrides = document.querySelectorAll(".parallel-override-model-select");
+		overrides.forEach(populate);
+
+		// Handle the auto-toggle check for the primary only
 		oai_model_change(true);
 	}
 	function toggle_fav_model() {
@@ -18919,7 +18976,6 @@ Be specific and avoid euphemisms/figures of speech.]
 		return submit_payload;
 	}
 
-	// ------ START Parallel Versions ------
 	function map_to_oai_payload(slot_payload, model_name) {
 		let scaled_rep_pen = 0;
 		if (slot_payload.params.presence_penalty > 0) {
@@ -19286,9 +19342,17 @@ Be specific and avoid euphemisms/figures of speech.]
 
 				// Deep copy the payload to prevent slots from overwriting each other's keys/params
 				let slot_payload = JSON.parse(JSON.stringify(submit_payload));
-				
-				// Optional: Introduce slight variance in temperature for variations 2-5 
-				// if they are using the same model, to ensure different results.
+				let model_to_use = custom_oai_model; 
+				if (i > 0) {
+					let override = localsettings.parallel_overrides[i - 1];
+					if (override && override.enabled && override.model !== "") {
+						if (validate_model_availability(override.model)) {
+							model_to_use = override.model;
+						} else {
+							showToast(`Slot ${i+1}: Model "${override.model}" not found. Using default.`, 4000);
+						}
+					}
+				}
 				if (count > 1 && i > 0 && slot_payload.params) {
 					slot_payload.params.temperature = Math.min(2.0, slot_payload.params.temperature + (i * 0.05));
 					slot_payload.params.sampler_seed = -1; // Force randomness
@@ -19326,7 +19390,7 @@ Be specific and avoid euphemisms/figures of speech.]
 					let targetep = apply_proxy_url(custom_oai_endpoint + (isChat ? oai_submit_endpoint_chat : oai_submit_endpoint));
 					
 					// Standard OAI mapping (shortened for brevity, use existing mapping logic here)
-					let oai_payload = map_to_oai_payload(slot_payload, custom_oai_model); 
+					let oai_payload = map_to_oai_payload(slot_payload, model_to_use); 
 					
 					last_request_str = JSON.stringify(oai_payload);
 					if (is_browser_supports_sse() && localsettings.tokenstreammode != 0) {
@@ -29343,7 +29407,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				<p>Generate multiple variations of the AI response simultaneously and pick the best one.</p>
 				<div class="settinglabel" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0;">
 					<span class="settingsmall">Variations to Generate:</span>
-					<select id="parallel_count_select" class="form-control" style="width: 80px; height: 30px;">
+					<select id="parallel_count_select" class="form-control" style="width: 80px; height: 30px;" onchange="render_parallel_override_rows()">
 						<option value="1">1 (Off)</option>
 						<option value="2">2</option>
 						<option value="3">3</option>
@@ -29351,8 +29415,12 @@ Be specific and avoid euphemisms/figures of speech.]
 						<option value="5">5</option>
 					</select>
 				</div>
-				<div class="settingsdesctxt" style="margin-top: 10px; opacity: 0.7;">
-					Note: Parallel generation sends multiple requests. On local backends like KoboldCpp, this will process them one by one or in parallel depending on your server settings. <b>Not supported on AI Horde.</b>
+				<div id="parallel_oai_extras" class="hidden" style="border-top: 1px solid var(--theme_color_border); padding-top: 10px; margin-top: 5px;">
+					<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+						<span class="settingsmall" style="font-weight: bold;">Model Overrides:</span>
+						<button type="button" class="btn btn-primary" style="font-size: 10px; padding: 2px 8px;" onclick="oai_fetch_models()">Refresh Model List</button>
+					</div>
+					<div id="parallel_override_rows_container"></div>
 				</div>
 			</div>
 			<div class="popupfooter">
