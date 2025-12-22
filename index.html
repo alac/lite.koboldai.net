@@ -6885,9 +6885,6 @@ Current version indicated by LITEVER below.
 	function append_to_slot(slot_idx, token) {
 		if (parallel_draft_data) {
 			parallel_draft_data.versions[slot_idx] += token;
-			if (slot_idx === parallel_draft_data.active_idx) {
-				gametext_arr[parallel_draft_data.target_idx] = parallel_draft_data.versions[slot_idx];
-			}
 		} else {
 			synchro_pending_stream += token;
 		}
@@ -6902,9 +6899,6 @@ Current version indicated by LITEVER below.
 	function set_slot_text(slot_idx, text) {
 		if (parallel_draft_data) {
 			parallel_draft_data.versions[slot_idx] = text;
-			if (slot_idx === parallel_draft_data.active_idx) {
-				gametext_arr[parallel_draft_data.target_idx] = text;
-			}
 		} else {
 			synchro_pending_stream = text;
 		}
@@ -11655,16 +11649,20 @@ Current version indicated by LITEVER below.
 
 	function switch_parallel_version(new_idx) {
 		if (!parallel_draft_data || new_idx === parallel_draft_data.active_idx) return;
-		
-		// Update active version
+
+		// Update active version pointer
 		parallel_draft_data.active_idx = new_idx;
-		
-		// Sync the main story array to the selected variation
-		let target = parallel_draft_data.target_idx;
-		if (gametext_arr[target] !== undefined) {
-			gametext_arr[target] = parallel_draft_data.versions[new_idx] || "";
+
+		// If the streams have finished, update the permanent array
+		if (active_requests_count <= 0) {
+			let target = parallel_draft_data.target_idx;
+			if (gametext_arr[target] !== undefined) {
+				gametext_arr[target] = parallel_draft_data.versions[new_idx] || "";
+			}
 		}
-		
+		// Otherwise, render_gametext will draw the history + a .pending_text span 
+		// which will now correctly show the progress of the new active_idx.
+
 		render_gametext(false, false); // Shallow refresh
 	}
 
@@ -22188,14 +22186,21 @@ Be specific and avoid euphemisms/figures of speech.]
 				onboundary = true;
 			}
 			elements.forEach(function (element) {
-				let temp_stream = synchro_pending_stream;
+				// Pull text from the active parallel slot if it exists, otherwise fallback to standard stream
+				let current_text = "";
+				if (parallel_draft_data) {
+					current_text = parallel_draft_data.versions[parallel_draft_data.active_idx];
+				} else {
+					current_text = synchro_pending_stream;
+				}
+
 				if (onboundary) {
-					let codeblockcount = (temp_stream.match(/```/g) || []).length;
+					let codeblockcount = (current_text.match(/```/g) || []).length;
 					if (codeblockcount > 0 && codeblockcount % 2 != 0) {
-						temp_stream += "```"; //force end code block
+						current_text += "```"; //force end code block
 					}
 				}
-				let pend = escape_html(pending_context_preinjection) + format_streaming_text(escape_html(temp_stream));
+				let pend = escape_html(pending_context_preinjection) + format_streaming_text(escape_html(current_text));
 				element.innerHTML = pend;
 			});
 		} else {
@@ -22613,10 +22618,14 @@ Be specific and avoid euphemisms/figures of speech.]
 				});
 			}
 
-			//streaming display for all other cases
-			if(!alreadyShowedStreaming && synchro_pending_stream!="" && waiting_for_tool_call==0)
+			let isParallelStreaming = (parallel_draft_data && active_requests_count > 0);
+
+			if(!alreadyShowedStreaming && (synchro_pending_stream!="" || isParallelStreaming) && waiting_for_tool_call==0)
 			{
-				let pend = escape_html(pending_context_preinjection) + format_streaming_text(escape_html(synchro_pending_stream));
+				// Get the text to show initially
+				let display_text = isParallelStreaming ? parallel_draft_data.versions[parallel_draft_data.active_idx] : synchro_pending_stream;
+				
+				let pend = escape_html(pending_context_preinjection) + format_streaming_text(escape_html(display_text));
 				fulltxt += `<span class="color_yellow pending_text">${pend}</span>`;
 			}
 
@@ -22847,7 +22856,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			}
 
 			// Show the 'AI is typing' message if an answer is pending, and prevent the 'send button' from being clicked again.
-			if (pending_response_id=="") {
+			if (pending_response_id == "" && active_requests_count <= 0) {
 				document.getElementById("chatistyping").classList.add("hidden");
 			}
 			else {
@@ -25522,8 +25531,12 @@ Be specific and avoid euphemisms/figures of speech.]
 		let newbodystr = "";
 		let countmap = new Map();
 		let pendstream = "";
-		if (synchro_pending_stream != "" && !isPreview) {
-			pendstream = escape_html(pending_context_preinjection) + format_streaming_text(escape_html(synchro_pending_stream));
+		let isParallelStreaming = (parallel_draft_data && active_requests_count > 0);
+
+		if ((synchro_pending_stream != "" || isParallelStreaming) && !isPreview) {
+			let display_text = isParallelStreaming ? parallel_draft_data.versions[parallel_draft_data.active_idx] : synchro_pending_stream;
+			
+			pendstream = escape_html(pending_context_preinjection) + format_streaming_text(escape_html(display_text));
 			let allow_cont_prev_turn = ((localsettings.opmode==4 && pending_context_preinjection=="") || (localsettings.opmode==3 && localsettings.allow_continue_chat));
 			let appended = false;
 			if(!appended && chatunits.length>0 && chatunits[chatunits.length-1].myturn==false && chatunits[chatunits.length-1].msg && allow_cont_prev_turn)
