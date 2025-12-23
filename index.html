@@ -25787,7 +25787,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			newbodystr += ` style='flex: 1; display:flex; padding: ${as.padding()}; margin: ${as.margin()}; min-height:${as.background_minHeight}px;`
 			+ ` font-size: ${as.font_size}px; flex-direction:column; align-items: ${as.centerHorizontally ? 'center' : 'flex-start'};`
 			+ ` justify-content: center; border-radius: ${as.rounded_bubbles ? '15px' : '0px'}'>`
-			+ `<span>${turn_switcher_html}${namepart}${curr.msg}</span></div></div>`;
+			+ `<span>${turn_switcher_html}${namepart}${curr.msg}${turn_switcher_html}</span></div></div>`;
 		}
 
 		return portraitsStyling + newbodystr.replaceAll(/(\r\n|\r|\n)/g,'<br>'); // Finally, convert newlines to HTML format and return the stylized string.
