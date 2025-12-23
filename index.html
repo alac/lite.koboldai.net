@@ -11642,8 +11642,23 @@ Current version indicated by LITEVER below.
 		}
 
 		document.getElementById("parallel_oai_extras").classList.remove("hidden");
+		
+		// Get the current primary model from the main UI
+		const primaryModel = get_custom_ep_model_dropdown().value;
+		
 		let html = "";
+		
+		// Add the 1st (Primary) row
+		html += `
+		<div class="flex" style="gap: 10px; margin-bottom: 8px; border-bottom: 1px dashed var(--theme_color_border); padding-bottom: 5px;">
+			<span class="settingsmall" style="width: 30px; font-weight: bold;">1st:</span>
+			<div style="width: 20px;"></div> <!-- Spacer to align with checkboxes -->
+			<select id="para_over_model_0" class="form-control parallel-override-model-select" style="height: 25px; font-size: 11px; padding: 2px;">
+				<option value="${primaryModel}">${primaryModel}</option>
+			</select>
+		</div>`;
 
+		// Add secondary rows
 		for (let i = 1; i < count; i++) {
 			let saved = localsettings.parallel_overrides[i - 1] || { enabled: false, model: "" };
 			let label = (i === 1) ? "2nd" : (i === 2) ? "3rd" : (i + 1) + "th";
@@ -11659,7 +11674,6 @@ Current version indicated by LITEVER below.
 		}
 		container.innerHTML = html;
 
-		// Immediately populate these new dropdowns with cached data if available
 		if (cached_oai_model_list_data) {
 			update_oai_model_list(cached_oai_model_list_data);
 		}
@@ -11678,6 +11692,14 @@ Current version indicated by LITEVER below.
 	function confirm_parallel_config() {
 		localsettings.parallel_count = parseInt(document.getElementById("parallel_count_select").value);
 		
+		// 1. Sync the 1st model choice back to the main dropdown
+		const firstModelChoice = document.getElementById("para_over_model_0").value;
+		if (firstModelChoice) {
+			get_custom_ep_model_dropdown().value = firstModelChoice;
+			oai_model_change(true); // Trigger standard logic like Chat-Completions auto-toggle
+		}
+
+		// 2. Save secondary overrides
 		for (let i = 1; i < localsettings.parallel_count; i++) {
 			localsettings.parallel_overrides[i - 1] = {
 				enabled: document.getElementById(`para_over_check_${i}`).checked,
@@ -11722,8 +11744,12 @@ Current version indicated by LITEVER below.
 			let isStreaming = (request_slots[i] && request_slots[i].status === "streaming");
 			let btnClass = `version-btn${isActive ? " active" : ""}${isStreaming ? " streaming" : ""}`;
 			
-			// If a slot is empty and not streaming, it might have failed or be pending
-			let label = `V${i + 1}`;
+			// Truncate model name if it's too long (e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini")
+			let fullModelName = parallel_draft_data.models[i] || "";
+			let shortName = fullModelName.split('/').pop(); // Take last part of path
+			if (shortName.length > 12) shortName = shortName.substring(0, 10) + "..";
+
+			let label = `V${i + 1}${shortName ? " [" + shortName + "]" : ""}`;
 			if (isStreaming) label += " (Typing...)";
 
 			html += `<button type="button" class="${btnClass}" onclick="switch_parallel_version(${i})">${label}</button>`;
@@ -19311,7 +19337,8 @@ Be specific and avoid euphemisms/figures of speech.]
 				parallel_draft_data = {
 					target_idx: gametext_arr.length, 
 					active_idx: 0,
-					versions: new Array(count).fill("")
+					versions: new Array(count).fill(""),
+					models: new Array(count).fill("")
 				};
 				gametext_arr.push(""); // Reserve the spot in history for switcher and content
 			} else {
@@ -19353,6 +19380,7 @@ Be specific and avoid euphemisms/figures of speech.]
 						}
 					}
 				}
+				parallel_draft_data.models[i] = model_to_use;
 				if (count > 1 && i > 0 && slot_payload.params) {
 					slot_payload.params.temperature = Math.min(2.0, slot_payload.params.temperature + (i * 0.05));
 					slot_payload.params.sampler_seed = -1; // Force randomness
