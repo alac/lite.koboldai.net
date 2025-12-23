@@ -2911,6 +2911,11 @@ Current version indicated by LITEVER below.
 		border: 1px solid var(--theme_color_border);
 		cursor: pointer;
 		transition: all 0.2s;
+		white-space: nowrap;
+		width: auto;
+		max-width: 250px;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.version-btn.active {
 		background-color: var(--theme_color_highlight);
@@ -11692,11 +11697,12 @@ Current version indicated by LITEVER below.
 	function confirm_parallel_config() {
 		localsettings.parallel_count = parseInt(document.getElementById("parallel_count_select").value);
 		
-		// 1. Sync the 1st model choice back to the main dropdown
+		// 1. Sync the 1st model choice back to UI AND Global Variables
 		const firstModelChoice = document.getElementById("para_over_model_0").value;
 		if (firstModelChoice) {
 			get_custom_ep_model_dropdown().value = firstModelChoice;
-			oai_model_change(true); // Trigger standard logic like Chat-Completions auto-toggle
+			oai_model_change(true);
+			custom_oai_model = firstModelChoice;
 		}
 
 		// 2. Save secondary overrides
@@ -11747,9 +11753,8 @@ Current version indicated by LITEVER below.
 			// Truncate model name if it's too long (e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini")
 			let fullModelName = parallel_draft_data.models[i] || "";
 			let shortName = fullModelName.split('/').pop(); // Take last part of path
-			if (shortName.length > 12) shortName = shortName.substring(0, 10) + "..";
 
-			let label = `V${i + 1}${shortName ? " [" + shortName + "]" : ""}`;
+			let label = `V${i + 1}${shortName ? "|" + shortName : ""}`;
 			if (isStreaming) label += " (Typing...)";
 
 			html += `<button type="button" class="${btnClass}" onclick="switch_parallel_version(${i})">${label}</button>`;
