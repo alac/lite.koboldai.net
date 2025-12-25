@@ -6743,10 +6743,9 @@ Current version indicated by LITEVER below.
 	}
 
 	function oai_api_stream_sse(sub_endpt, submit_payload, submit_headers, slot_idx = 0) {
-		// Move this inside so each parallel request has its own state
 		let streaming_was_thinking = false; 
-		
-		// Use slot-specific or global buffer
+		let thinking_end_idx = -1; // Tracks the character index where reasoning ended
+
 		if (!parallel_draft_data) {
 			synchro_pending_stream = "";
 		}
@@ -6764,9 +6763,8 @@ Current version indicated by LITEVER below.
 		
 		fetch(sub_endpt, reqOpt)
 		.then(x => {
-			if (x.ok) {
-				return x;
-			} else {
+			if (x.ok) { return x; } 
+			else {
 				return x.text().then(errdat => {
 					throw new Error('Error while SSE streaming: ' + errdat);
 				}).catch(err => {
@@ -6778,30 +6776,21 @@ Current version indicated by LITEVER below.
 			resp.body
 			.pipeThrough(new TextDecoderStream())
 			.pipeThrough(new TransformStream({
-				start(ctrl) {
-					ctrl.buf = '';
-				},
+				start(ctrl) { ctrl.buf = ''; },
 				transform(chunk, ctrl) {
 					ctrl.buf += chunk;
-					if (chunk) {
-						last_response_streamlog += chunk;
-					}
+					if (chunk) { last_response_streamlog += chunk; }
 					let evs = [];
 					let m;
 					while ((m = /^data: ?(.*)(\r?\n){2}/m.exec(ctrl.buf)) !== null) {
-						try { evs.push({ data: JSON.parse(m[1]) }); } catch (e) {
-							console.log("Cannot parse a chunk: " + chunk);
-						}
+						try { evs.push({ data: JSON.parse(m[1]) }); } catch (e) {}
 						ctrl.buf = ctrl.buf.substring(m.index + m[0].length);
 					}
-					if (evs.length) {
-						ctrl.enqueue(evs);
-					}
+					if (evs.length) { ctrl.enqueue(evs); }
 				}
 			}))
 			.pipeTo(new WritableStream({
 				write(chunk) {
-					// Stop processing if batch was aborted
 					if (!pending_response_id || pending_response_id === "-1" || pending_response_id === "") {
 						trigger_abort_controller();
 						return;
@@ -6814,13 +6803,10 @@ Current version indicated by LITEVER below.
 						if (event.data && event.data.candidates && event.data.candidates.length > 0) {
 							if (event.data.candidates[0].content && event.data.candidates[0].content.parts) {
 								for (let part of event.data.candidates[0].content.parts) {
-									if (part.thought) {
-										streaming_was_thinking = true;
-									}
+									if (part.thought) { streaming_was_thinking = true; }
 									if (!part.thought && streaming_was_thinking) {
-										// Transition from thinking to content
-										let wrap = `${localsettings.start_thinking_tag}${get_slot_text(slot_idx)}${localsettings.stop_thinking_tag}`;
-										set_slot_text(slot_idx, wrap);
+										// Mark the transition point based on current buffer length
+										thinking_end_idx = get_slot_text(slot_idx).length;
 										streaming_was_thinking = false;
 									}
 									token += part.text || "";
@@ -6831,11 +6817,11 @@ Current version indicated by LITEVER below.
 						else if (event.data && event.data.choices && event.data.choices.length > 0) {
 							let delta = event.data.choices[0].delta;
 							if (delta) {
-								if (delta.content) {
+								if (delta.content !== undefined && delta.content !== null) {
 									if (streaming_was_thinking) {
+										// Mark the transition point based on current buffer length
+										thinking_end_idx = get_slot_text(slot_idx).length;
 										streaming_was_thinking = false;
-										let wrap = `${localsettings.start_thinking_tag}${get_slot_text(slot_idx)}${localsettings.stop_thinking_tag}`;
-										set_slot_text(slot_idx, wrap);
 									}
 									token = delta.content;
 								} else if (delta.reasoning_content || delta.reasoning) {
@@ -6847,17 +6833,13 @@ Current version indicated by LITEVER below.
 							if (event.data.choices[0].logprobs && event.data.choices[0].logprobs.content) {
 								logprobs_content_arr = logprobs_content_arr.concat(event.data.choices[0].logprobs.content);
 							}
-							if (event.data.choices[0].finish_reason == "stop") {
-								last_stop_reason = "stop";
-							}
+							if (event.data.choices[0].finish_reason == "stop") { last_stop_reason = "stop"; }
 						}
 
-						// Apply the token to the correct slot
 						if (token) {
 							append_to_slot(slot_idx, token);
 						}
 
-						// Check for early stop sequences
 						let currentFullText = get_slot_text(slot_idx);
 						for (let seq of cached_stop_seq) {
 							if (seq && currentFullText.includes(seq) && currentFullText.trim().indexOf(seq) > 1) {
@@ -6869,7 +6851,34 @@ Current version indicated by LITEVER below.
 					update_pending_stream_displays();
 				},
 				close() {
-					// Signal completion for this slot
+					// RECONSTRUCTION LOGIC
+					let finalText = get_slot_text(slot_idx);
+					
+					// 1. Check if we have reasoning content that needs wrapping
+					if (thinking_end_idx !== -1 || /<think>/i.test(finalText)) {
+						let hasStart = /<think>/i.test(finalText);
+						let hasEnd = /<\/think>/i.test(finalText);
+
+						// Fallback: If thinking never "officially" ended, assume it ends at the very end
+						let endPos = (thinking_end_idx === -1) ? finalText.length : thinking_end_idx;
+
+						// Prepend start tag if missing
+						if (!hasStart) {
+							finalText = localsettings.start_thinking_tag + finalText;
+							endPos += localsettings.start_thinking_tag.length;
+						}
+
+						// Suffix end tag at the transition point if missing
+						if (!hasEnd) {
+							finalText = finalText.slice(0, endPos) + 
+										localsettings.stop_thinking_tag + 
+										finalText.slice(endPos);
+						}
+						
+						// Update the buffer with the repaired version
+						set_slot_text(slot_idx, finalText);
+					}
+
 					if (parallel_draft_data) {
 						request_slots[slot_idx].status = "done";
 						active_requests_count--;
@@ -6877,19 +6886,15 @@ Current version indicated by LITEVER below.
 							finalize_parallel_batch(logprobs_content_arr);
 						}
 					} else {
-						synchro_polled_response = synchro_pending_stream;
+						synchro_polled_response = finalText;
 						synchro_pending_stream = "";
 						finalize_single_request(logprobs_content_arr);
 					}
 				},
-				abort(error) {
-					handle_stream_error(error, slot_idx);
-				},
+				abort(error) { handle_stream_error(error, slot_idx); },
 			}));
 		})
-		.catch((error) => {
-			handle_stream_error(error, slot_idx);
-		});
+		.catch((error) => { handle_stream_error(error, slot_idx); });
 	}
 
 	// Helper: Handle text appending for Parallel vs Single
@@ -6913,6 +6918,16 @@ Current version indicated by LITEVER below.
 		} else {
 			synchro_pending_stream = text;
 		}
+	}
+
+	function sanitize_and_wrap_thinking(text) {
+		if (!text) return "";
+		// 1. Remove all instances of <think> and </think> (case-insensitive) 
+		// to prevent nesting if the model already provided them.
+		let cleaned = text.replace(/<think>/gi, '').replace(/<\/think>/gi, '').trim();
+		
+		// 2. Wrap the cleaned text with the tags defined in settings.
+		return `${localsettings.start_thinking_tag}${cleaned}${localsettings.stop_thinking_tag}`;
 	}
 
 	function finalize_parallel_batch(logprobs) {
