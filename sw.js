@@ -1,6 +1,6 @@
 console.log("Service worker is active - should enable PWA functionality");
 
-const cacheName = "klite1"; // Change value to force update
+const cacheName = 'kobold-4b4d472f'; // Change value to force update
 
 self.addEventListener("install", event => {
 	// Kick out the old service worker
