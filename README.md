@@ -1,9 +1,10 @@
 This fork has a few hacky features:
+- Parallel responses; run each request against up to 5 models, pick a winner via toggles.
 - "Custom Models" list has a favorite toggle, that pushes models to the top of the list.
 - Long context UX upgrades:
 -- Dim messages that have fallen out of context.
--- Add a "context horizon" divider that separates in-context and out-of-context.
--- Add "Edit Last" and "Edit Recent" (e.g. last 3) buttons for conversations that make the "full edit" view lag.
+-- Add a "context horizon" divider that separates in-context and out-of-context. (Only works for Instruct/Chat mode)
+-- Add "Edit X" buttons for editing only the most recent X messages; conversations that make the "full edit" view lag.
 - "Autogenerate Summary" modifications:
 -- Minor tweaks: different prompt (custom input tbd), remove thinking blocks from summary.
 -- Add a "summary overlap" indicator to warn when the user needs to update the summary.
