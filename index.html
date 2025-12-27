@@ -19402,7 +19402,6 @@ Be specific and avoid euphemisms/figures of speech.]
 				}
 				parallel_draft_data.models[i] = model_to_use;
 				if (count > 1 && i > 0 && slot_payload.params) {
-					slot_payload.params.temperature = Math.min(2.0, slot_payload.params.temperature + (i * 0.05));
 					slot_payload.params.sampler_seed = -1; // Force randomness
 				}
 
