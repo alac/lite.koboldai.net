@@ -25713,8 +25713,12 @@ Be specific and avoid euphemisms/figures of speech.]
 			// Note: repack logic indices may vary, but target_idx aligns with 
 			// the last AI turn usually.
 			let turn_switcher_html = "";
+			let pre_turn_switcher_html = "";
+			let post_turn_switcher_html = "";
 			if (!isPreview && parallel_draft_data && i === chatunits.length - 1 && !chatunits[i].myturn) {
 				turn_switcher_html = generate_version_switcher_html();
+				pre_turn_switcher_html = turn_switcher_html + "<hr>"
+				post_turn_switcher_html = "<hr>" + turn_switcher_html
 			}
 
 			// INSERT SUMMARY BOOKMARK
@@ -25801,7 +25805,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			newbodystr += ` style='flex: 1; display:flex; padding: ${as.padding()}; margin: ${as.margin()}; min-height:${as.background_minHeight}px;`
 			+ ` font-size: ${as.font_size}px; flex-direction:column; align-items: ${as.centerHorizontally ? 'center' : 'flex-start'};`
 			+ ` justify-content: center; border-radius: ${as.rounded_bubbles ? '15px' : '0px'}'>`
-			+ `<span>${turn_switcher_html}${namepart}${curr.msg}${turn_switcher_html}</span></div></div>`;
+			+ `<span>${pre_turn_switcher_html}${namepart}${curr.msg}${post_turn_switcher_html}</span></div></div>`;
 		}
 
 		return portraitsStyling + newbodystr.replaceAll(/(\r\n|\r|\n)/g,'<br>'); // Finally, convert newlines to HTML format and return the stylized string.
