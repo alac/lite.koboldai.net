@@ -25767,7 +25767,7 @@ Be specific and avoid euphemisms/figures of speech.]
 				curr.msg += curr.add_stream_msg; //add it last so it doesnt mess up the pending_text tags
 			}
 
-			if(!curr.msg)
+			if(!curr.msg && (turn_switcher_html == ""))
 			{
 				continue; //if turn is empty skip it
 			}
