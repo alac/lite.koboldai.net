@@ -5450,9 +5450,15 @@ Current version indicated by LITEVER below.
 		const count = parseInt(document.getElementById("edit_count_select").value);
 		edit_save_count = count; // Update global tracking variable
 		
-		const recent_texts = gametext_arr.slice(-count);
-		// Join chunks. Lite chunks carry their own whitespace usually.
-		document.getElementById("edit_last_textarea").value = recent_texts.join("");
+		let joined_text = gametext_arr.slice(-count).join("");
+		joined_text = joined_text.trim();
+
+		const thinkRegexStr = get_thinking_regex();
+		if (thinkRegexStr) {
+			const thinkRegex = new RegExp(thinkRegexStr, "gmi");
+			joined_text = joined_text.replace(thinkRegex, "");
+		}
+		document.getElementById("edit_last_textarea").value = joined_text;
 	}
 
 	function cancel_edit_last() {
