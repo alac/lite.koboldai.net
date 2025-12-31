@@ -3815,6 +3815,7 @@ Current version indicated by LITEVER below.
 	var avoidwelcome = false;
 	var edit_save_count = 1; // Tracks how many messages we are currently editing
 	var last_context_overlap_tokens = -1; // Tracks the overlap count from the last generation
+	var last_estimated_story_budget = -1; // Tracks the available token budget for story history
 
 	var localsettings = {
 		my_api_key: "0000000000", //put here so it can be saved and loaded in persistent mode
@@ -18640,6 +18641,22 @@ Be specific and avoid euphemisms/figures of speech.]
 			{
 				truncated_memory = replace_placeholders(truncated_memory,false,false,true);
 				truncated_anote = replace_placeholders(truncated_anote,false,false,false);
+
+				// Calculate effective story budget for display
+				if(!is_using_kcpp_with_added_memory()) {
+					// In standard mode, budget is MaxChars - SystemChars (Memory+AN)
+					let system_chars = truncated_memory.length + truncated_anote.length;
+					let story_chars = max_allowed_characters - system_chars;
+					// Divide by 3.0 to match the estimator used for overlap calculation
+					last_estimated_story_budget = Math.floor(story_chars / 3.0);
+				} else {
+					// In KCPP mode, max_allowed_characters is artificially inflated (6.0x), so we use settings
+					let est_total_tokens = localsettings.max_context_length - localsettings.max_length;
+					let est_sys_tokens = Math.floor((truncated_memory.length + truncated_anote.length) / 3.0);
+					last_estimated_story_budget = est_total_tokens - est_sys_tokens;
+				}
+				if(last_estimated_story_budget < 1) last_estimated_story_budget = 1;
+
 				if(!is_using_kcpp_with_added_memory())
 				{
 					let augmented_len = truncated_memory.length + truncated_context.length + truncated_anote.length;
@@ -20732,17 +20749,23 @@ Be specific and avoid euphemisms/figures of speech.]
 		}
 
 		let genworkertxt = (genworker=="Custom Endpoint")?`<a href="#" onclick="get_and_show_workers()">${genworker}</a>`:`${genworker}`;
-		
 		// Calculate Summary Overlap Indicator
 		let summary_indicator = "";
 		if (localsettings.last_summary_idx > -1 && last_context_overlap_tokens > -1) {
-			let est_total_context = localsettings.max_context_length - localsettings.max_length;
-			let pct = Math.floor((last_context_overlap_tokens / est_total_context) * 100);
+			let budget = last_estimated_story_budget;
+			// Fallback if we haven't generated yet (budget -1)
+			if(budget <= 0) {
+				budget = localsettings.max_context_length - localsettings.max_length;
+			}
+			
+			let pct = Math.floor((last_context_overlap_tokens / budget) * 100);
+			if(pct > 100) pct = 100;
+
 			let color = "color_green";
 			if (last_context_overlap_tokens == 0) color = "color_red";
 			else if (pct < 25) color = "color_orange";
 			
-			summary_indicator = ` | <span class="${color}" title="Summary Overlap: Amount of active history (estimated tokens) that is also covered by the last Auto-Summary.">Overlap: ${last_context_overlap_tokens}t (${pct}%)</span>`;
+			summary_indicator = ` | <span class="${color}" title="Summary Overlap: Amount of active history (estimated tokens) that is also covered by the last Auto-Summary.">Overlap: ${last_context_overlap_tokens}/${budget}t (${pct}%)</span>`;
 		}
 
 		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by ${genworkertxt} using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${get_time_taken()} seconds.${summary_indicator}`;
