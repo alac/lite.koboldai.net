@@ -32,7 +32,80 @@ Current version indicated by LITEVER below.
 	<!-- Favicon -->
 	<link rel="icon" id="fvico" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAAXNSR0IB2cksfwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAEtQTFRFAAAA+XJ0l09PsVdXcTw842hqw2hmTi4vMCQlb2eUgWtl+tGpBAMDEw4NPCkoFw8PJBgXt5WBVkxW4Nvf7Lia3Z+MpJnAZ05HnJOTYIS/NAAAABl0Uk5TAv////v//vT9//3/Nna08qf+///////a/hkcROQAAAGUSURBVHiclZLRcoQgDEULBAKoIKjI/39pL4i7nbUPbcYZwJyES5Kvr3/YvIx1nn9zL4G4EwuTXX7xs4QFGEklOT6SBENERguhsWHFD2AVRhL8IEgawY8b5L4fYtg+TSl8+NMEu4G2P34Q67r6I+37dLyBfU/4PY/sInG2MR8vIHG01h9mHfq1hUUQtwYcLEcp+ltmwqutdy5HMwAfc8ExKtVSLEZZW13Jxb4Azq7UHFnFrtGItLliS1UDYOfctm3JhEtlEH5zzpZNDsC63AB1VysY3gqC3C2ytsNW6Q3IjCt91Qr9QK8MiFL4nUEpEyNLYmodxYo3RquVHWUmbbRu0QCbKWwNfil5zYeENrRRqtZrGEQYqdtW8FWHLl4bgZDLFLZdbS/UzP2AEGTufkt3xWSvwzJeh4GxHWD5qlgXOZ/n2ULuC/od4Pk8x9xhCekD0Bqd/DmXgbpEumRgrMPn1K6ecs4pJc/V0nE+x35KtfTJTJufpvPTD2DyNZ3e4wP3zDCHevg+yYvf09PfkHuK7/Vv9g2CjBTdqv3bFgAAAABJRU5ErkJggg==" />
 
-	<style id="custom_css"></style>
+	<style id="custom_css">
+/* Fix Review Modal Styles */
+.fix-entry {
+    border: 1px solid var(--theme_color_border);
+    background-color: var(--theme_color_input_bg);
+    margin-bottom: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.fix-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+    color: var(--theme_color_text);
+    border-bottom: 1px dashed var(--theme_color_border);
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+}
+
+.fix-reason {
+    font-style: italic;
+    color: #aaaaaa; /* Light gray */
+    font-size: 0.9em;
+}
+
+.fix-diff-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.fix-block {
+    padding: 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.fix-old {
+    background-color: rgba(180, 50, 50, 0.2);
+    border: 1px solid rgba(180, 50, 50, 0.4);
+    color: #ffcccc;
+}
+
+.fix-new {
+    background-color: rgba(50, 180, 50, 0.2);
+    border: 1px solid rgba(50, 180, 50, 0.4);
+    color: #ccffcc;
+}
+
+.fix-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 5px;
+}
+
+.fix-status {
+    font-weight: bold;
+    font-size: 0.9em;
+    padding: 5px 10px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.status-applied { background-color: #2e7d32; color: white; }
+.status-missing { background-color: #555; color: #aaa; border: 1px solid #777; }
+	</style>
 
 	<style id="bootstrap-normalize.min">
 	/*!
@@ -434,6 +507,36 @@ Current version indicated by LITEVER below.
 
 
 	/* Top nav menu */
+	.quick-ctx-wrapper {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		margin-right: 6px;
+	}
+	.quick-ctx-label {
+		font-size: 9px;
+		color: #cccccc;
+		line-height: 10px;
+		font-weight: bold;
+		margin-bottom: 2px;
+		cursor: default;
+	}
+	.quick-ctx-input {
+		width: 55px;
+		height: 20px;
+		background-color: rgba(0,0,0,0.2);
+		border: 1px solid var(--theme_color_border);
+		color: var(--theme_color_text);
+		font-size: 11px;
+		padding: 0px;
+		text-align: center;
+		border-radius: 4px;
+	}
+	/* Hide the whole wrapper on mobile */
+	@media (max-width: 768px) {
+		.quick-ctx-wrapper { display: none; }
+	}
 	#connectstatusdiv {
 		text-align: center;
 		font-size: 13px;
@@ -3674,6 +3777,7 @@ Current version indicated by LITEVER below.
 	const SCENARIO_SLOTS = 6;
 	const num_regex_rows = 4;
 	const default_websearch_template = "### New Task:\nFrom above text, rephrase the search engine query \"{{QUERY}}\" as a single short phrase (for search engines) using proper nouns, references and names to avoid ambiguity.\n\n### Rephrased Search Query Created:\n";
+	const FIX_LOOKBACK_LIMIT = 8; // How many history chunks to scan. Increased to account for message splicing.
 
 	//all configurable globals
 	var unique_uid = "LITE_UID_"+(Math.floor(100000 + Math.random() * 900000)).toString();
@@ -3816,6 +3920,7 @@ Current version indicated by LITEVER below.
 	var edit_save_count = 1; // Tracks how many messages we are currently editing
 	var last_context_overlap_tokens = -1; // Tracks the overlap count from the last generation
 	var last_estimated_story_budget = -1; // Tracks the available token budget for story history
+	let detected_fixes_cache = [];
 
 	var localsettings = {
 		my_api_key: "0000000000", //put here so it can be saved and loaded in persistent mode
@@ -5000,6 +5105,11 @@ Current version indicated by LITEVER below.
 		}
 		populate_corpo_leftpanel();
 		update_toggle_lightmode(false); //load theme but dont save or toggle it
+
+		// Update Quick Context Input
+		if(document.getElementById("quick_max_context")) {
+			document.getElementById("quick_max_context").value = localsettings.max_context_length;
+		}
 
 		//load custom css
 		let resetcss = urlParams.get('resetcss');
@@ -11710,6 +11820,163 @@ Current version indicated by LITEVER below.
 		if (!cached_oai_model_list_data || !cached_oai_model_list_data.data) return true; // Assume true if we haven't fetched yet
 		return cached_oai_model_list_data.data.some(m => m.id === modelID);
 	}
+	function extract_fixes_from_text(text) {
+		const thinkRegexStr = get_thinking_regex();
+		if (thinkRegexStr) {
+			const thinkRegex = new RegExp(thinkRegexStr, "gmi");
+			text = text.replace(thinkRegex, "");
+		}
+
+		const fixes = [];
+		// Regex matches <fix> block allowing for whitespace
+		// Capture groups: 1=old, 2=new, 3=reasoning
+		const regex = /<fix>\s*<old>([\s\S]*?)<\/old>\s*<new>([\s\S]*?)<\/new>\s*<reasoning>([\s\S]*?)<\/reasoning>\s*<\/fix>/gi;
+		
+		let match;
+		while ((match = regex.exec(text)) !== null) {
+			fixes.push({
+				old_text: match[1].trim(),
+				new_text: match[2].trim(),
+				reason: match[3].trim(),
+				source_text: text // Reference to where this came from (for parallel logic if needed later)
+			});
+		}
+		return fixes;
+	}
+	function show_apply_edits() {
+		detected_fixes_cache = [];
+		
+		// 1. Collect fixes from Parallel Drafts (if active) OR Last Message
+		if (parallel_draft_data && parallel_draft_data.versions) {
+			for (let i = 0; i < parallel_draft_data.versions.length; i++) {
+				let drafts_fixes = extract_fixes_from_text(parallel_draft_data.versions[i]);
+				detected_fixes_cache = detected_fixes_cache.concat(drafts_fixes);
+			}
+		} else if (gametext_arr.length > 0) {
+			// Just check the very last message in history if no drafts active
+			let last_msg = gametext_arr[gametext_arr.length - 1];
+			detected_fixes_cache = detected_fixes_cache.concat(extract_fixes_from_text(last_msg));
+		}
+		
+		if (detected_fixes_cache.length === 0) {
+			showToast("No <fix> tags found in recent output.");
+			return;
+		}
+
+		render_apply_edits_modal();
+		document.getElementById("apply_edits_overlay").classList.remove("hidden");
+	}
+	function close_apply_edits() {
+		document.getElementById("apply_edits_overlay").classList.add("hidden");
+	}
+	function render_apply_edits_modal() {
+		const listContainer = document.getElementById("apply_edits_list");
+		listContainer.innerHTML = "";
+
+		// 1. Prepare Recent History for Sorting
+		// Grab last N chunks based on central constant
+		let history_indices = [];
+		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
+		
+		for (let i = start_idx; i < gametext_arr.length; i++) {
+			history_indices.push({
+				index: i,
+				text: gametext_arr[i]
+			});
+		}
+
+		// 2. Sort Fixes by position in history
+		detected_fixes_cache.forEach(fix => {
+			fix.sort_score = Infinity;
+			
+			// Scan chunks in reverse order (newest first) to find the match target
+			for (let i = history_indices.length; i >= 0; i--) {
+				let h = history_indices[i];
+				if (!h) {
+					continue;
+				}
+				let pos = h.text.indexOf(fix.old_text);
+				if (pos !== -1) {
+					// Score prefers newer chunks, then earlier position in string
+					fix.sort_score = (h.index * 100000) + pos;
+					break; 
+				}
+			}
+		});
+
+		// Sort: Found items first (ordered by appearance in text), then unfound items
+		detected_fixes_cache.sort((a, b) => a.sort_score - b.sort_score);
+
+		// 3. Render
+		let html = "";
+		
+		detected_fixes_cache.forEach((fix, idx) => {
+			// Check Status
+			let statusHtml = "";
+			let found_old = false;
+			let found_new = false;
+			
+			// Check availability in last N chunks
+			for (let i = start_idx; i < gametext_arr.length -1; i++) {
+				if (gametext_arr[i].includes(fix.old_text)) found_old = true;
+				if (gametext_arr[i].includes(fix.new_text)) found_new = true;
+			}
+
+			if (found_old) {
+				statusHtml = `<button type="button" class="btn btn-primary bg_green" onclick="apply_single_fix(${idx})">Apply Fix</button>`;
+			} else if (found_new) {
+				statusHtml = `<div class="fix-status status-applied">Applied / Present</div>`;
+			} else {
+				statusHtml = `<div class="fix-status status-missing">Context Not Found</div>`;
+			}
+
+			html += `
+			<div class="fix-entry">
+				<div class="fix-header">
+					<span style="font-weight:bold;">Suggestion #${idx + 1}</span>
+					<span class="fix-reason">${escape_html(fix.reason)}</span>
+				</div>
+				<div class="fix-diff-grid">
+					<div class="fix-block fix-old">${escape_html(fix.old_text)}</div>
+					<div class="fix-block fix-new">${escape_html(fix.new_text)}</div>
+				</div>
+				<div class="fix-actions">
+					${statusHtml}
+				</div>
+			</div>`;
+		});
+
+		listContainer.innerHTML = html;
+	}
+	function apply_single_fix(idx) {
+		let fix = detected_fixes_cache[idx];
+		if (!fix) return;
+
+		// Scan backwards from newest to oldest within the centralized limit
+		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
+		let applied = false;
+
+		for (let i = gametext_arr.length - 1; i >= start_idx; i--) {
+			if (gametext_arr[i].includes(fix.old_text)) {
+				// Apply replacement
+				gametext_arr[i] = gametext_arr[i].replace(fix.old_text, fix.new_text);
+				applied = true;
+				break; // Only apply to the most recent match
+			}
+		}
+
+		if (applied) {
+			// Save and Render Main UI
+			render_gametext(true);
+			sync_multiplayer(false);
+			
+			// Re-render the modal to update statuses (in case of overlaps)
+			render_apply_edits_modal();
+		} else {
+			showToast("Could not find the text to replace anymore.");
+			render_apply_edits_modal(); // Refresh status
+		}
+	}
 	function show_parallel_config() {
 		mainmenu_untab(true);
 		document.getElementById("parallel_count_select").value = localsettings.parallel_count;
@@ -14899,6 +15166,34 @@ Current version indicated by LITEVER below.
 		}
 	}
 
+	function quick_update_ctx() {
+		let val = parseInt(document.getElementById("quick_max_context").value);
+		// Validate using existing bounds logic
+		val = cleannum(val, 512, 999999); 
+		localsettings.max_context_length = val;
+		
+		// Sync with main settings menu inputs if they exist in DOM
+		let mainInput = document.getElementById("max_context_length");
+		let mainSlide = document.getElementById("max_context_length_slide");
+		if(mainInput) mainInput.value = val;
+		if(mainSlide) {
+			// Expand slider max if the manual value exceeds it
+			if(val > parseInt(mainSlide.max)) {
+				mainSlide.max = val;
+				let label = document.getElementById("max_context_length_slide_label");
+				if(label) label.innerText = val;
+			}
+			mainSlide.value = val;
+		}
+		
+		// If using Mod 1 (Budget tracking), force a refresh of the budget calc
+		if(typeof last_estimated_story_budget !== 'undefined') {
+			last_estimated_story_budget = -1; 
+			render_gametext(true); // Re-render to update the overlap display immediately
+		}
+		autosave();
+	}
+
 	function update_genimg_button_visiblility()
 	{
 		if (localsettings.generate_images_mode==0) {
@@ -14990,6 +15285,7 @@ Current version indicated by LITEVER below.
 	function confirm_settings() {
 		hide_popups();
 		localsettings.max_context_length = parseInt(document.getElementById("max_context_length").value);
+		document.getElementById("quick_max_context").value = localsettings.max_context_length; // Sync Quick Input
 		localsettings.max_length = parseInt(document.getElementById("max_length").value);
 		localsettings.temperature = parseFloat(document.getElementById("temperature").value);
 		localsettings.rep_pen = parseFloat(document.getElementById("rep_pen").value);
@@ -22892,7 +23188,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			document.getElementById("btn_actredo3").disabled = document.getElementById("btn_actredo2").disabled = document.getElementById("btn_actredo").disabled = disablebtns;
 			document.getElementById("btn_actretry3").disabled = document.getElementById("btn_actretry2").disabled = document.getElementById("btn_actretry").disabled = true;
 			document.getElementById("btn_actbranch3").disabled = document.getElementById("btn_actbranch2").disabled = document.getElementById("btn_actbranch").disabled = disablebtns;
-			document.getElementById("btn_addmedia3").disabled = document.getElementById("btn_addmedia2").disabled = document.getElementById("btn_addmedia").disabled = disablebtns;
+			// document.getElementById("btn_addmedia3").disabled = document.getElementById("btn_addmedia2").disabled = document.getElementById("btn_addmedia").disabled = disablebtns;
 			document.getElementById("btn_editmode").disabled = disablebtns;
 
 		} else {
@@ -22901,7 +23197,7 @@ Be specific and avoid euphemisms/figures of speech.]
 			document.getElementById("btn_actredo3").disabled = document.getElementById("btn_actredo2").disabled = document.getElementById("btn_actredo").disabled = false;
 			document.getElementById("btn_actretry3").disabled = document.getElementById("btn_actretry2").disabled = document.getElementById("btn_actretry").disabled = false;
 			document.getElementById("btn_actbranch3").disabled = document.getElementById("btn_actbranch2").disabled = document.getElementById("btn_actbranch").disabled = false;
-			document.getElementById("btn_addmedia3").disabled = document.getElementById("btn_addmedia2").disabled = document.getElementById("btn_addmedia").disabled = false;
+			// document.getElementById("btn_addmedia3").disabled = document.getElementById("btn_addmedia2").disabled = document.getElementById("btn_addmedia").disabled = false;
 			document.getElementById("btn_editmode").disabled = false;
 		}
 
@@ -26663,6 +26959,10 @@ Be specific and avoid euphemisms/figures of speech.]
 				</div>
 
 			</div>
+			<div class="quick-ctx-wrapper">
+				<div class="quick-ctx-label">Context</div>
+				<input type="number" id="quick_max_context" class="quick-ctx-input mainnav" title="Quick Context Length" onchange="quick_update_ctx()" step="128">
+			</div>
 			<div id="connectstatusdiv">
 				<div id="connectstatus">Connecting</div>
 				<div class="hidden" style="font-size: 10px;" id="connectstatusmultiplayer"></div>
@@ -26702,7 +27002,8 @@ Be specific and avoid euphemisms/figures of speech.]
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actredo" onpointerdown="btn_redo_longpress_start()" onpointerleave="btn_redo_longpress_end()" onpointerup="btn_redo_longpress_end()" onclick="btn_redo()">Redo</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actretry" onclick="btn_retry()">Retry</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actbranch" onclick="btn_branch(this)">Branch</button>
-				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia" onclick="add_media_btn_menu()">Add File</button>
+				<!-- <button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia" onclick="add_media_btn_menu()">Add File</button> -->
+				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_apply_edits" onclick="show_apply_edits()">Apply Edits</button>
 				<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch" onclick="toggle_websearch()">&nbsp;</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_parallel" onclick="show_parallel_config()">Parallel</button>
 				<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editlast" onclick="show_edit_last()">Edit X</button>
@@ -26754,7 +27055,8 @@ Be specific and avoid euphemisms/figures of speech.]
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actredo2" onpointerdown="btn_redo_longpress_start()" onpointerleave="btn_redo_longpress_end()" onpointerup="btn_redo_longpress_end()" onclick="btn_redo()">Redo</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actretry2" onclick="btn_retry()">Retry</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_actbranch2" onclick="btn_branch(this)">Branch</button>
-						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia2" onclick="add_media_btn_menu()">Add File</button>
+						<!-- <button type="button" class="btn actbtn btn-primary mainnav" id="btn_addmedia2" onclick="add_media_btn_menu()">Add File</button> -->
+						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_apply_edits2" onclick="show_apply_edits()">Apply Edits</button>
 						<button type="button" class="btn actbtn btn-primary mainnav slim btnicon-websearch hidden" id="btn_togglesearch2" onclick="toggle_websearch()">&nbsp;</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_parallel2" onclick="show_parallel_config()">Parallel</button>
 						<button type="button" class="btn actbtn btn-primary mainnav" id="btn_editmode" onclick="btn_editmode()">Edit</button>
@@ -29437,7 +29739,22 @@ Be specific and avoid euphemisms/figures of speech.]
 	<div class="toptoast hidden" id="toptoast"></div>
 
 	<input type="file" id="tempfilepicker" style="display:none;" accept="*">
-    
+
+	<!-- Apply Edits Modal -->
+	<div id="apply_edits_overlay" class="popupcontainer flex hidden">
+		<div class="popupbg flex"></div>
+		<div class="nspopup flexsize big">
+			<div class="popuptitlebar flex"> <!-- Use flexbox for alignment -->
+				<div class="popuptitletext">Review & Apply Edits</div>
+				<button type="button" class="btn btn-primary flex-push-right" onclick="close_apply_edits()">Close</button>
+			</div>
+			<div id="apply_edits_list" class="menutext" style="height: 70vh; overflow-y: auto; text-align: left; padding: 10px;">
+				<!-- Content will be injected by JavaScript -->
+			</div>
+			<!-- The footer with the "Done" button has been removed -->
+		</div>
+	</div>
+
 	<!-- Edit Last Modal -->
 	<div id="edit_last_overlay" class="hidden">
 		<div id="edit_last_header">
