@@ -3917,6 +3917,7 @@ Current version indicated by LITEVER below.
 	var last_context_overlap_tokens = -1; // Tracks the overlap count from the last generation
 	var last_estimated_story_budget = -1; // Tracks the available token budget for story history
 	let detected_fixes_cache = [];
+	let apply_edits_source_idx = -1; // Tracks which message contains the suggestions so we ignore it
 
 	var localsettings = {
 		my_api_key: "0000000000", //put here so it can be saved and loaded in persistent mode
@@ -11824,10 +11825,12 @@ Current version indicated by LITEVER below.
 		}
 
 		const fixes = [];
-		// Regex matches <fix> block allowing for whitespace
-		// Capture groups: 1=old, 2=new, 3=reasoning
-		const regex = /<fix>\s*<old>([\s\S]*?)<\/old>\s*<new>([\s\S]*?)<\/new>\s*<reasoning>([\s\S]*?)<\/reasoning>\s*<\/fix>/gi;
-		
+		// Regex strategy:
+		// 1. Enforce specific START tags (<fix>, <old>, <new>, <reasoning>) to maintain structure.
+		// 2. Allow generic END tags (<\/[^>]+>) to handle LLM inconsistencies (e.g. </OLD>, </text>, </fix>).
+		// 3. Regex backtracking ensures we capture content up to the closing tag that appears *before* the next required start tag.
+		const regex = /<fix>\s*<old>([\s\S]*?)<\/[^>]+>\s*<new>([\s\S]*?)<\/[^>]+>\s*<reasoning>([\s\S]*?)<\/[^>]+>\s*<\/[^>]+>/gi;
+
 		let match;
 		while ((match = regex.exec(text)) !== null) {
 			fixes.push({
@@ -11841,16 +11844,20 @@ Current version indicated by LITEVER below.
 	}
 	function show_apply_edits() {
 		detected_fixes_cache = [];
+		apply_edits_source_idx = -1;
 		
-		// 1. Collect fixes from Parallel Drafts (if active) OR Last Message
+		// 1. Collect fixes and identify source index
+		// We explicitly track where the fixes came from to avoid "Self-Cannibalization"
+		// (replacing text inside the suggestion block itself) or false positives in the status check.
 		if (parallel_draft_data && parallel_draft_data.versions) {
+			apply_edits_source_idx = parallel_draft_data.target_idx;
 			for (let i = 0; i < parallel_draft_data.versions.length; i++) {
 				let drafts_fixes = extract_fixes_from_text(parallel_draft_data.versions[i]);
 				detected_fixes_cache = detected_fixes_cache.concat(drafts_fixes);
 			}
 		} else if (gametext_arr.length > 0) {
-			// Just check the very last message in history if no drafts active
-			let last_msg = gametext_arr[gametext_arr.length - 1];
+			apply_edits_source_idx = gametext_arr.length - 1;
+			let last_msg = gametext_arr[apply_edits_source_idx];
 			detected_fixes_cache = detected_fixes_cache.concat(extract_fixes_from_text(last_msg));
 		}
 		
@@ -11858,6 +11865,36 @@ Current version indicated by LITEVER below.
 			showToast("No <fix> tags found in recent output.");
 			return;
 		}
+
+		// 2. Perform Sorting HERE (Once) to prevent Jitter on refresh
+		let history_indices = [];
+		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
+		
+		for (let i = start_idx; i < gametext_arr.length; i++) {
+			// CRITICAL: Do not scan the message that provided the suggestions for sorting context
+			if (i === apply_edits_source_idx) continue;
+			
+			history_indices.push({
+				index: i,
+				text: gametext_arr[i]
+			});
+		}
+
+		detected_fixes_cache.forEach(fix => {
+			fix.sort_score = Infinity;
+			// Scan chunks in reverse order (newest first)
+			for (let i = history_indices.length - 1; i >= 0; i--) {
+				let h = history_indices[i];
+				let pos = h.text.indexOf(fix.old_text);
+				if (pos !== -1) {
+					fix.sort_score = (h.index * 100000) + pos;
+					break; 
+				}
+			}
+		});
+
+		// Sort found items first, in order of appearance
+		detected_fixes_cache.sort((a, b) => a.sort_score - b.sort_score);
 
 		render_apply_edits_modal();
 		document.getElementById("apply_edits_overlay").classList.remove("hidden");
@@ -11869,51 +11906,19 @@ Current version indicated by LITEVER below.
 		const listContainer = document.getElementById("apply_edits_list");
 		listContainer.innerHTML = "";
 
-		// 1. Prepare Recent History for Sorting
-		// Grab last N chunks based on central constant
-		let history_indices = [];
 		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
-		
-		for (let i = start_idx; i < gametext_arr.length; i++) {
-			history_indices.push({
-				index: i,
-				text: gametext_arr[i]
-			});
-		}
 
-		// 2. Sort Fixes by position in history
-		detected_fixes_cache.forEach(fix => {
-			fix.sort_score = Infinity;
-			
-			// Scan chunks in reverse order (newest first) to find the match target
-			for (let i = history_indices.length; i >= 0; i--) {
-				let h = history_indices[i];
-				if (!h) {
-					continue;
-				}
-				let pos = h.text.indexOf(fix.old_text);
-				if (pos !== -1) {
-					// Score prefers newer chunks, then earlier position in string
-					fix.sort_score = (h.index * 100000) + pos;
-					break; 
-				}
-			}
-		});
-
-		// Sort: Found items first (ordered by appearance in text), then unfound items
-		detected_fixes_cache.sort((a, b) => a.sort_score - b.sort_score);
-
-		// 3. Render
 		let html = "";
 		
 		detected_fixes_cache.forEach((fix, idx) => {
-			// Check Status
 			let statusHtml = "";
 			let found_old = false;
 			let found_new = false;
 			
-			// Check availability in last N chunks
-			for (let i = start_idx; i < gametext_arr.length -1; i++) {
+			// CRITICAL: Scan history for status, excluding the suggestion source message
+			for (let i = start_idx; i < gametext_arr.length; i++) {
+				if (i === apply_edits_source_idx) continue;
+				
 				if (gametext_arr[i].includes(fix.old_text)) found_old = true;
 				if (gametext_arr[i].includes(fix.new_text)) found_new = true;
 			}
@@ -11948,14 +11953,16 @@ Current version indicated by LITEVER below.
 		let fix = detected_fixes_cache[idx];
 		if (!fix) return;
 
-		// Scan backwards from newest to oldest within the centralized limit
 		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
 		let applied = false;
 
+		// CRITICAL: Apply fix to history, ignoring the source message
 		for (let i = gametext_arr.length - 1; i >= start_idx; i--) {
+			if (i === apply_edits_source_idx) continue;
+
 			if (gametext_arr[i].includes(fix.old_text)) {
 				// Apply replacement
-				gametext_arr[i] = gametext_arr[i].replace(fix.old_text, fix.new_text);
+				gametext_arr[i] = gametext_arr[i].replaceAll(fix.old_text, fix.new_text);
 				applied = true;
 				break; // Only apply to the most recent match
 			}
@@ -11966,11 +11973,11 @@ Current version indicated by LITEVER below.
 			render_gametext(true);
 			sync_multiplayer(false);
 			
-			// Re-render the modal to update statuses (in case of overlaps)
+			// Re-render the modal (Status updates, but order stays strictly fixed)
 			render_apply_edits_modal();
 		} else {
 			showToast("Could not find the text to replace anymore.");
-			render_apply_edits_modal(); // Refresh status
+			render_apply_edits_modal(); 
 		}
 	}
 	function show_parallel_config() {
