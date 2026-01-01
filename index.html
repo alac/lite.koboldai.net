@@ -11824,10 +11824,12 @@ Current version indicated by LITEVER below.
 		}
 
 		const fixes = [];
-		// Regex matches <fix> block allowing for whitespace
-		// Capture groups: 1=old, 2=new, 3=reasoning
-		const regex = /<fix>\s*<old>([\s\S]*?)<\/old>\s*<new>([\s\S]*?)<\/new>\s*<reasoning>([\s\S]*?)<\/reasoning>\s*<\/fix>/gi;
-		
+		// Regex strategy:
+		// 1. Enforce specific START tags (<fix>, <old>, <new>, <reasoning>) to maintain structure.
+		// 2. Allow generic END tags (<\/[^>]+>) to handle LLM inconsistencies (e.g. </OLD>, </text>, </fix>).
+		// 3. Regex backtracking ensures we capture content up to the closing tag that appears *before* the next required start tag.
+		const regex = /<fix>\s*<old>([\s\S]*?)<\/[^>]+>\s*<new>([\s\S]*?)<\/[^>]+>\s*<reasoning>([\s\S]*?)<\/[^>]+>\s*<\/[^>]+>/gi;
+
 		let match;
 		while ((match = regex.exec(text)) !== null) {
 			fixes.push({
