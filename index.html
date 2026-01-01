@@ -18913,10 +18913,12 @@ Be specific and avoid euphemisms/figures of speech.]
 			if (localsettings.last_summary_idx > -1) {
 				let markPos = truncated_context.indexOf(summary_marker);
 				if (markPos > -1) {
-					// The marker exists, so everything before it is the overlap. 
-					// Divide by 3.0 (same estimation used in getMaxAllowedCharacters)
-					last_context_overlap_tokens = Math.floor(markPos / 3.0);
-					// Remove marker
+					let offset = 0;
+					if (!is_using_kcpp_with_added_memory()) {
+						offset = truncated_memory.length;
+					}
+					let actual_history_chars = Math.max(0, markPos - offset);
+					last_context_overlap_tokens = Math.floor(actual_history_chars / 3.0);
 					truncated_context = truncated_context.replace(summary_marker, "");
 				} else {
 					// Marker was truncated out
