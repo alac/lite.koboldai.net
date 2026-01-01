@@ -29744,14 +29744,30 @@ Be specific and avoid euphemisms/figures of speech.]
 	<div id="apply_edits_overlay" class="popupcontainer flex hidden">
 		<div class="popupbg flex"></div>
 		<div class="nspopup flexsize big">
-			<div class="popuptitlebar flex"> <!-- Use flexbox for alignment -->
+			<div class="popuptitlebar flex">
 				<div class="popuptitletext">Review & Apply Edits</div>
 				<button type="button" class="btn btn-primary flex-push-right" onclick="close_apply_edits()">Close</button>
 			</div>
-			<div id="apply_edits_list" class="menutext" style="height: 70vh; overflow-y: auto; text-align: left; padding: 10px;">
+			
+			<!-- Embedded style to handle the Desktop vs Mobile height difference -->
+			<style>
+				#apply_edits_list {
+					height: 70vh; /* Default Desktop Height */
+					overflow-y: auto;
+					text-align: left;
+					padding: 10px;
+				}
+				@media (max-width: 768px) {
+					#apply_edits_list {
+						height: auto !important; /* Reset fixed height on mobile */
+						flex-grow: 1; /* Grow to fill the container */
+					}
+				}
+			</style>
+			
+			<div id="apply_edits_list" class="menutext">
 				<!-- Content will be injected by JavaScript -->
 			</div>
-			<!-- The footer with the "Done" button has been removed -->
 		</div>
 	</div>
 
