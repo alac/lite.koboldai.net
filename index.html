@@ -33,6 +33,21 @@ Current version indicated by LITEVER below.
 	<link rel="icon" id="fvico" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAAXNSR0IB2cksfwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAEtQTFRFAAAA+XJ0l09PsVdXcTw842hqw2hmTi4vMCQlb2eUgWtl+tGpBAMDEw4NPCkoFw8PJBgXt5WBVkxW4Nvf7Lia3Z+MpJnAZ05HnJOTYIS/NAAAABl0Uk5TAv////v//vT9//3/Nna08qf+///////a/hkcROQAAAGUSURBVHiclZLRcoQgDEULBAKoIKjI/39pL4i7nbUPbcYZwJyES5Kvr3/YvIx1nn9zL4G4EwuTXX7xs4QFGEklOT6SBENERguhsWHFD2AVRhL8IEgawY8b5L4fYtg+TSl8+NMEu4G2P34Q67r6I+37dLyBfU/4PY/sInG2MR8vIHG01h9mHfq1hUUQtwYcLEcp+ltmwqutdy5HMwAfc8ExKtVSLEZZW13Jxb4Azq7UHFnFrtGItLliS1UDYOfctm3JhEtlEH5zzpZNDsC63AB1VysY3gqC3C2ytsNW6Q3IjCt91Qr9QK8MiFL4nUEpEyNLYmodxYo3RquVHWUmbbRu0QCbKWwNfil5zYeENrRRqtZrGEQYqdtW8FWHLl4bgZDLFLZdbS/UzP2AEGTufkt3xWSvwzJeh4GxHWD5qlgXOZ/n2ULuC/od4Pk8x9xhCekD0Bqd/DmXgbpEumRgrMPn1K6ecs4pJc/V0nE+x35KtfTJTJufpvPTD2DyNZ3e4wP3zDCHevg+yYvf09PfkHuK7/Vv9g2CjBTdqv3bFgAAAABJRU5ErkJggg==" />
 
 	<style id="custom_css">
+/* Diff Highlighting */
+.fix-diff-del {
+    background-color: rgba(220, 50, 50, 0.4);
+    font-weight: bold;
+    text-decoration: line-through; /* Optional: Strikethrough for clarity */
+    color: #fff;
+    padding: 1px 0;
+}
+.fix-diff-ins {
+    background-color: rgba(50, 200, 50, 0.4);
+    font-weight: bold;
+    color: #fff;
+    padding: 1px 0;
+}
+
 /* Fix Review Modal Styles */
 .fix-entry {
     border: 1px solid var(--theme_color_border);
@@ -4554,6 +4569,47 @@ Current version indicated by LITEVER below.
 			return 0;
 		}
 		return words.length;
+	}
+	/* Diff Helper for Apply Fixes */
+	function get_diff_html_split(text1, text2) {
+		// 1. Safety check: if lib missing, fallback to standard escape
+		if (typeof diff_match_patch === 'undefined') {
+			return { 
+				oldHtml: escape_html(text1), 
+				newHtml: escape_html(text2) 
+			};
+		}
+
+		// 2. Initialize and Compute
+		var dmp = new diff_match_patch();
+		var diffs = dmp.diff_main(text1, text2);
+		
+		// 3. Semantic Cleanup (Makes it look human-edited rather than machine-precise)
+		dmp.diff_cleanupSemantic(diffs);
+
+		var htmlOld = "";
+		var htmlNew = "";
+
+		// 4. Iterate results
+		// op: -1 = Delete, 1 = Insert, 0 = Equal
+		for (var x = 0; x < diffs.length; x++) {
+			var op = diffs[x][0];
+			var data = escape_html(diffs[x][1]); 
+			
+			switch (op) {
+				case 1: // Insert (Present in New, Not in Old)
+					htmlNew += `<span class="fix-diff-ins">${data}</span>`;
+					break;
+				case -1: // Delete (Present in Old, Not in New)
+					htmlOld += `<span class="fix-diff-del">${data}</span>`;
+					break;
+				case 0: // Equal (Present in Both)
+					htmlOld += data;
+					htmlNew += data;
+					break;
+			}
+		}
+		return { oldHtml: htmlOld, newHtml: htmlNew };
 	}
 	function escape_html(unsafe) //sanitizes html content for rendering
 	{
@@ -11931,6 +11987,8 @@ Current version indicated by LITEVER below.
 				statusHtml = `<div class="fix-status status-missing">Context Not Found</div>`;
 			}
 
+			// Calculate diffs for display
+			let diffRes = get_diff_html_split(fix.old_text, fix.new_text);
 			html += `
 			<div class="fix-entry">
 				<div class="fix-header">
@@ -11938,8 +11996,8 @@ Current version indicated by LITEVER below.
 					<span class="fix-reason">${escape_html(fix.reason)}</span>
 				</div>
 				<div class="fix-diff-grid">
-					<div class="fix-block fix-old">${escape_html(fix.old_text)}</div>
-					<div class="fix-block fix-new">${escape_html(fix.new_text)}</div>
+					<div class="fix-block fix-old">${diffRes.oldHtml}</div>
+					<div class="fix-block fix-new">${diffRes.newHtml}</div>
 				</div>
 				<div class="fix-actions">
 					${statusHtml}
