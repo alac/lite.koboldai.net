@@ -11962,7 +11962,7 @@ Current version indicated by LITEVER below.
 
 			if (gametext_arr[i].includes(fix.old_text)) {
 				// Apply replacement
-				gametext_arr[i] = gametext_arr[i].replace(fix.old_text, fix.new_text);
+				gametext_arr[i] = gametext_arr[i].replaceAll(fix.old_text, fix.new_text);
 				applied = true;
 				break; // Only apply to the most recent match
 			}
