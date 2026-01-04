@@ -3847,6 +3847,7 @@ Current version indicated by LITEVER below.
 	var last_reply_was_empty = false; //set to true if last reply is empty
 	var current_memory = ""; //stored memory
 	var current_anote = ""; //stored author note
+	var anote_is_enabled = true;
 	var current_anotetemplate = "[Author\'s note: <|>]";
 	var current_automem_script = "Default"; // Identifies the currently selected script by label
 
@@ -16199,6 +16200,7 @@ Current version indicated by LITEVER below.
 	function confirm_memory() {
 		current_memory = document.getElementById("memorytext").value;
 		current_anote = document.getElementById("anotetext").value;
+		anote_is_enabled = document.getElementById("anote_enabled_box").checked;
 		current_anotetemplate = document.getElementById("anotetemplate").value;
 		anote_strength = document.getElementById("anote_strength").value;
 		newlineaftermemory = (document.getElementById("newlineaftermemory").checked?true:false);
@@ -19092,7 +19094,7 @@ Current version indicated by LITEVER below.
 			let truncated_anote = current_anotetemplate.replace("<|>", current_anote);
 			truncated_anote = substring_to_boundary(truncated_anote, max_anote_len);
 
-			if (current_anote.length == 0) {
+			if (!anote_is_enabled || current_anote.length == 0) {
 				//if there's no authors note at all, don't include the template
 				truncated_anote = "";
 			}
@@ -24751,6 +24753,7 @@ Current version indicated by LITEVER below.
 		//setup memory tab
 		document.getElementById("memorytext").value = current_memory;
 		document.getElementById("anotetext").value = current_anote;
+        document.getElementById("anote_enabled_box").checked = anote_is_enabled;
 		document.getElementById("anotetemplate").value = current_anotetemplate;
 		document.getElementById("anote_strength").value = anote_strength;
 		document.getElementById("newlineaftermemory").checked = (newlineaftermemory?true:false);
@@ -27372,7 +27375,10 @@ Current version indicated by LITEVER below.
 			<div class="context_tab_container hidden" id="anote_tab_container">
 				<div class="settinglabel">
 					<div class="justifyleft"><br>Author's Note<span class="helpicon">?<span class="helptext">Similar to Memory, but inserted near the end of the text instead of the start. A good way to control the mood/behavior of the AI.</span></span></div>
-					<!-- Buttons removed from here -->
+                    <span class="justifyright flex-push-right" style="display: flex; align-items: center;">
+                        <div class="justifyleft settingsmall">Enabled </div>
+                        <input type="checkbox" id="anote_enabled_box" style="margin-left: 5px;">
+                    </span>
 				</div>
 				<textarea title="Edit Author's Note" style="height: 350px;" class="form-control menuinput_multiline" id="anotetext" placeholder="Author's Note will be inserted close to end of context."></textarea>
 				<br>
