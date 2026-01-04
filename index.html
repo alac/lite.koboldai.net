@@ -2647,6 +2647,30 @@ Current version indicated by LITEVER below.
 		border: 1px solid var(--theme_color_border);
 	}
 
+	#automem_overlay, #automem_edit_overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: var(--theme_color_bg);
+		z-index: 20000;
+		display: flex;
+		flex-direction: column;
+		padding: 10px;
+	}
+	#automem_editor {
+		width: 100%;
+		flex-grow: 1;
+		resize: none;
+		font-size: 16px;
+		padding: 10px;
+		box-sizing: border-box;
+		background-color: var(--theme_color_input_bg);
+		color: var(--theme_color_input_text);
+		border: 1px solid var(--theme_color_border);
+	}
+
 	/* Printer friendly view */
 	@media print {
 		#inputrow, #actionmenu, #actionmenu2,.topmenu,.lastreq,.corpolastreq,.cht_inp_hold_outer,.corpo_chat_outer,.corpo_leftpanel_open
@@ -3649,6 +3673,7 @@ Current version indicated by LITEVER below.
 		"worldinfo": []
 	},
 	];
+	const DEFAULT_MEMORY_SCRIPT = `### Instruction:Summarize the above text in a single paragraph of up to ten detailed sentences.\n### Response:`;
 
 	const default_client_agent = "KoboldAiLite:17";
 	const stablehorde_url = "https://aihorde.net";
@@ -3823,6 +3848,7 @@ Current version indicated by LITEVER below.
 	var current_memory = ""; //stored memory
 	var current_anote = ""; //stored author note
 	var current_anotetemplate = "[Author\'s note: <|>]";
+	var current_automem_script = "Default"; // Identifies the currently selected script by label
 
 	var anote_strength = 320; //distance from end
 	var newlineaftermemory = true;
@@ -4149,6 +4175,9 @@ Current version indicated by LITEVER below.
 			{enabled: false, model: ""}, // Slot 2 (3rd)
 			{enabled: false, model: ""}, // Slot 3 (4th)
 			{enabled: false, model: ""}, // Slot 4 (5th)
+		],
+		memory_scripts: [
+			{ label: "Default", content: DEFAULT_MEMORY_SCRIPT }
 		],
 	};
 
@@ -5667,6 +5696,110 @@ Current version indicated by LITEVER below.
 		render_gametext(true);
 		sync_multiplayer(false);
 		cancel_edit_last();
+	}
+
+	/* Memory Script Logic */
+	function show_automem_scripts() {
+		let grid = document.getElementById("automem_grid");
+		let html = "";
+		let scripts = localsettings.memory_scripts || [];
+		
+		// Ensure default exists if empty
+		if(scripts.length === 0) {
+			scripts.push({ label: "Default", content: DEFAULT_MEMORY_SCRIPT });
+			localsettings.memory_scripts = scripts;
+		}
+
+		for (let i = 0; i < scripts.length; i++) {
+			let item = scripts[i];
+			let isActive = (item.label === current_automem_script);
+			let borderStyle = isActive ? "border: 2px solid #00ff00;" : "";
+			let activeText = isActive ? " <small>(Active)</small>" : "";
+
+			// Using yellow style for memory actions
+			html += `<button type="button" class="scenarioitem yellow btn btn-primary" style="${borderStyle}" onclick="select_automem_script('${escape_html(item.label)}')">
+				<div style="font-weight:bold; font-size:1.1em">${escape_html(item.label)}${activeText}</div>
+				<div style="font-size:0.8em; opacity:0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escape_html(item.content.replace(/\n/g, ' '))}</div>
+			</button>`;
+		}
+		
+		grid.innerHTML = html;
+		document.getElementById("automem_overlay").classList.remove("hidden");
+	}
+
+	function close_automem_scripts() {
+		document.getElementById("automem_overlay").classList.add("hidden");
+	}
+
+	function select_automem_script(label) {
+		current_automem_script = label;
+		close_automem_scripts();
+		// Optional: showToast("Memory Script set to: " + label);
+	}
+
+	function show_automem_editor() {
+		close_automem_scripts();
+		let scripts = localsettings.memory_scripts || [];
+		let text = "";
+		
+		// Serialize to Frontmatter syntax
+		for (let item of scripts) {
+			text += `:${item.label}\n${item.content}\n\n`;
+		}
+		
+		let editor = document.getElementById("automem_editor");
+		editor.value = text.trim();
+		document.getElementById("automem_edit_overlay").classList.remove("hidden");
+		editor.focus();
+	}
+
+	function cancel_automem_editor() {
+		document.getElementById("automem_edit_overlay").classList.add("hidden");
+		show_automem_scripts(); 
+	}
+
+	function save_automem_editor() {
+		let text = document.getElementById("automem_editor").value;
+		let lines = text.split("\n");
+		let newScripts = [];
+		let currentLabel = null;
+		let currentContent = [];
+
+		for (let line of lines) {
+			if (line.startsWith(":")) {
+				if (currentLabel) {
+					newScripts.push({
+						label: currentLabel,
+						content: currentContent.join("\n").trim()
+					});
+				}
+				currentLabel = line.substring(1).trim();
+				currentContent = [];
+			} else {
+				if (currentLabel) {
+					currentContent.push(line);
+				}
+			}
+		}
+		if (currentLabel) {
+			newScripts.push({
+				label: currentLabel,
+				content: currentContent.join("\n").trim()
+			});
+		}
+
+		localsettings.memory_scripts = newScripts;
+		
+		// If the currently selected script was deleted, revert to first available or Default
+		if(!newScripts.find(s => s.label === current_automem_script)) {
+			if(newScripts.length > 0) current_automem_script = newScripts[0].label;
+			else current_automem_script = "Default";
+		}
+
+		autosave(); 
+		
+		document.getElementById("automem_edit_overlay").classList.add("hidden");
+		show_automem_scripts(); 
 	}
 
 	/* Quick Reply Logic */
@@ -8949,6 +9082,7 @@ Current version indicated by LITEVER below.
 		}
 		new_save_storyobj.anotetemplate = current_anotetemplate;
 		new_save_storyobj.authorsnote = current_anote;
+		new_save_storyobj.automem_script = current_automem_script;
 		new_save_storyobj.memory = current_memory;
 		new_save_storyobj.worldinfo = current_wi;
 
@@ -9246,6 +9380,9 @@ Current version indicated by LITEVER below.
 				if (storyobj.memory) {
 					current_memory = storyobj.memory;
 				}
+				if (storyobj.automem_script) {
+					current_automem_script = storyobj.automem_script;
+				}
 				if (storyobj.worldinfo) {
 					current_wi = storyobj.worldinfo;
 				}
@@ -9357,6 +9494,9 @@ Current version indicated by LITEVER below.
 				}
 				if (storyobj.memory) {
 					current_memory = storyobj.memory;
+				}
+				if (storyobj.automem_script) {
+					current_automem_script = storyobj.automem_script;
 				}
 				if (storyobj.worldinfo_v2 != null && storyobj.worldinfo_v2.entries != null) {
 					for (var key in storyobj.worldinfo_v2.entries) {
@@ -16177,25 +16317,20 @@ Current version indicated by LITEVER below.
 			let excess_len = augmented_len - max_allowed_characters; //if > 0, then we exceeded context window
 			truncated_context = truncated_memory + truncated_context.substring(excess_len);
 
-			let long_story = (truncated_context.length>1800?true:false);
-			truncated_context += `\n### Instruction:
-[OOC: Pause the roleplay.
-Provide a chronological summary of the events in the text above. Focus on what the events do to relationships between characters and themselves.
+			let scriptObj = localsettings.memory_scripts.find(s => s.label === current_automem_script);
+			let promptTemplate = "";
+			if (scriptObj) {
+				promptTemplate = scriptObj.content;
+			} else {
+				if (current_automem_script !== "Default") {
+					showToast(`Autogenerate memory preset "${current_automem_script}" not found. Using Default.`);
+				}
+				promptTemplate = DEFAULT_MEMORY_SCRIPT;
+			}
+			truncated_context += "\n" + promptTemplate;
 
-The format of the summary should be:
-### DAY
--- Morning --
-- EVENT
--- School --
-- EVENT
--- After School --
-- EVENT
+			truncated_context = replace_placeholders(truncated_context)
 
-List events in the order they happened.
-Describe each event in one or more FULL SENTENCES.
-Be specific and avoid euphemisms/figures of speech.]
-### Response:`;
-			truncated_context = replace_placeholders(truncated_context);
 			let submit_payload = {
 			"prompt": truncated_context,
 			"params": {
@@ -16586,6 +16721,7 @@ Be specific and avoid euphemisms/figures of speech.]
 		{
 			personal_notes = "";
 			current_memory = "";
+			current_automem_script = "Default";
 			current_anote = "";
 			current_wi = [];
 			anote_strength = 320;
@@ -27221,6 +27357,7 @@ Be specific and avoid euphemisms/figures of speech.]
 						<div style="margin-bottom: 2px;">
 							<button type="button" class="btn btn-primary" style="padding:2px 6px; font-size: 11px;" id="btnnotes" onclick="set_personal_notes()">Notes</button>
 							<button type="button" class="btn btn-primary" style="padding:2px 6px; font-size: 11px;" id="btnautogenmem" onclick="autogenerate_summary_memory()">AutoGenerate Memory</button>
+    						<button type="button" class="btn btn-primary" style="padding:2px 6px; font-size: 11px; margin-left: 2px;" title="Swap Memory Script" onclick="show_automem_scripts()">⇄</button>
 						</div>
 						<div class="settinglabel" style="padding-top: 0px;">
 							<div class="justifyleft settingsmall" title="Add newline after injecting memory text">Newline After Memory </div>
@@ -29908,6 +30045,28 @@ Be specific and avoid euphemisms/figures of speech.]
 		</div>
 	</div>
 	<!-- ------- END Parallel Versions ------- -->
+
+	<!-- Memory Script Selector Modal -->
+	<div id="automem_overlay" class="hidden">
+		<div id="automem_header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+			<button type="button" class="btn btn-primary" onclick="close_automem_scripts()">Close</button>
+			<span style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Memory Scripts</span>
+			<button type="button" class="btn btn-primary" onclick="show_automem_editor()">Edit</button>
+		</div>
+		<div id="automem_grid" class="scenariogrid" style="height: 100%; padding: 0;">
+			<!-- Generated buttons go here -->
+		</div>
+	</div>
+
+	<!-- Memory Script Editor Modal -->
+	<div id="automem_edit_overlay" class="hidden">
+		<div id="automem_edit_header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+			<button type="button" class="btn btn-primary" onclick="cancel_automem_editor()">Cancel</button>
+			<span style="align-self: center; font-weight: bold; color: var(--theme_color_text);">Edit Scripts</span>
+			<button type="button" class="btn btn-primary bg_green" onclick="save_automem_editor()">Save</button>
+		</div>
+		<textarea id="automem_editor" class="form-control" spellcheck="false" placeholder=":Label Name&#10;Prompt content..."></textarea>
+	</div>
 </body>
 
 <script id="pwa-setup">
