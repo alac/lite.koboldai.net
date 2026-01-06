@@ -2671,6 +2671,191 @@ Current version indicated by LITEVER below.
 		border: 1px solid var(--theme_color_border);
 	}
 
+	/* Avatar Module Styles */
+	#avatar_dock {
+		position: fixed;
+		/* Move to Top-Left to avoid Input Box/Action Buttons at the bottom */
+		top: 100px; 
+		left: 10px;
+		
+		/* Lower Z-Index: High enough to float over chat, low enough to be under Modals */
+		z-index: 95; 
+		
+		font-family: sans-serif;
+		display: flex;
+		flex-direction: column; /* Stack downwards from top */
+		align-items: flex-start;
+		pointer-events: none;
+	}
+
+	/* Ensure Modals are always on top of the dock */
+	#avatar_settings_modal, #avatar_gallery_modal {
+		z-index: 20000 !important;
+	}
+
+	#avatar_pill {
+		width: 50px;
+		height: 50px;
+		background-color: var(--theme_color_bg);
+		border: 2px solid var(--theme_color_border);
+		border-radius: 50%;
+		cursor: pointer;
+		pointer-events: auto;
+		overflow: hidden;
+		box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+		transition: all 0.2s ease;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		margin-bottom: 5px; /* Spacing between pill and row */
+	}
+
+	#avatar_pill:hover {
+		transform: scale(1.05);
+		border-color: var(--theme_color_highlight);
+	}
+
+	#avatar_row {
+		background-color: var(--theme_color_bg);
+		border: 1px solid var(--theme_color_border);
+		border-radius: 0 12px 12px 12px; /* Top-left corner sharp to hug the anchor point */
+		padding: 8px;
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 10px;
+		pointer-events: auto;
+		box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+		min-width: 320px;
+		max-width: 85vw;
+		
+		/* Animation: Slide DOWN from top */
+		animation: slideDown 0.2s ease-out;
+	}
+
+	@keyframes slideDown {
+		from { opacity: 0; transform: translateY(-20px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+
+	.avatar-preview-container {
+		position: relative;
+		width: 80px;
+		height: 80px;
+		flex-shrink: 0;
+	}
+
+	.avatar-img-main {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		border-radius: 6px;
+		border: 2px solid var(--theme_color_border);
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+
+	.avatar-img-main:hover {
+		border-color: #00ff00;
+	}
+
+	.avatar-generating {
+		animation: glowGreen 1.5s infinite alternate;
+		border-color: #00ff00 !important;
+	}
+
+	.avatar-error {
+		border-color: #ff0000 !important;
+	}
+
+	@keyframes glowGreen {
+		from { box-shadow: 0 0 5px #00ff00; }
+		to { box-shadow: 0 0 15px #00ff00; }
+	}
+
+	.avatar-controls {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.avatar-btn {
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		font-size: 14px;
+		border-radius: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.avatar-status-box {
+		flex-grow: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		max-height: 80px;
+		overflow-y: auto;
+	}
+
+	.avatar-char-name {
+		font-weight: bold;
+		color: var(--theme_color_text);
+		font-size: 0.85em;
+	}
+
+	.avatar-desc-text {
+		font-size: 0.75em;
+		color: var(--theme_color_input_text);
+		background-color: var(--theme_color_input_bg);
+		padding: 4px;
+		border-radius: 4px;
+		white-space: pre-wrap;
+		height: 100%;
+		min-height: 50px;
+	}
+
+	.avatar-collapse-btn {
+		align-self: flex-start;
+		background: none;
+		border: none;
+		color: var(--theme_color_text);
+		cursor: pointer;
+		font-weight: bold;
+		font-size: 16px;
+		line-height: 1;
+		padding: 0 4px;
+	}
+
+	/* Gallery Grid Adjustments */
+	.gallery-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+		gap: 8px;
+		padding: 8px;
+	}
+
+	.gallery-item {
+		position: relative;
+		border: 2px solid transparent;
+		cursor: pointer;
+		border-radius: 4px;
+		overflow: hidden;
+		aspect-ratio: 2 / 3; /* Assuming portrait gens */
+	}
+
+	.gallery-item:hover {
+		border-color: var(--theme_color_highlight);
+	}
+
+	.gallery-item img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
 	/* Printer friendly view */
 	@media print {
 		#inputrow, #actionmenu, #actionmenu2,.topmenu,.lastreq,.corpolastreq,.cht_inp_hold_outer,.corpo_chat_outer,.corpo_leftpanel_open
@@ -5242,6 +5427,8 @@ Current version indicated by LITEVER below.
 		loadok = false;
 	}
 
+	init_avatar_module();
+
 	if(!loadok && !localflag && selected_models.length==0 && !is_using_custom_ep()) //nothing was loaded. this is a brand new state, in web lite
 	{
 		console.log("Autopick some good default models...");
@@ -5925,6 +6112,405 @@ Current version indicated by LITEVER below.
 		
 		document.getElementById("quick_reply_edit_overlay").classList.add("hidden");
 		show_quick_replies(); // Return to selector
+	}
+
+	// Global State for Avatar Module
+	var avatar_state = {
+		settings: {
+			enabled: true,
+			base_appearance: "",
+			context_depth: 3,
+			parallel_n: 1,
+			api_model: "hidream", // Default for nano-gpt example
+			prompt_template: "Analyze the story context. Describe {{char}}'s current physical appearance, clothing, and expression. \nOutput JSON format only: {\"display_text\": \"Short description...\", \"visual_prompt\": \"Comma separated tags for image generation...\"}",
+			image_endpoint: "https://nano-gpt.com/api/v1/images/generations",
+			use_main_api_for_text: true // If true, uses the Chat Completion endpoint configured in main settings
+		},
+		current: {
+			image: "", // Base64 or URL
+			text: "Ready to generate.",
+			prompt_used: ""
+		},
+		previous: null, // For revert
+		session_cache: [], // Stores [{image, prompt}] for the gallery
+		is_generating: false
+	};
+
+	function init_avatar_module() {
+		// 1. Inject HTML into body
+		const dockHtml = `
+		<div id="avatar_dock">
+			<!-- Collapsed State -->
+			<div id="avatar_pill" onclick="toggle_avatar_dock(true)">
+				<!-- Pill icon -->
+				<img id="avatar_pill_img" src="${niko_square}" style="width:100%; height:100%; object-fit:cover;">
+			</div>
+			
+			<!-- Expanded State -->
+			<div id="avatar_row" class="hidden">
+				<!-- Collapse Button (Moved to left for Top-Left orientation logic, or keep right) -->
+				<!-- Let's keep structure but visual flow is Left->Right -->
+				
+				<div class="avatar-preview-container">
+					<img id="avatar_main_img" class="avatar-img-main" src="${niko_square}" onclick="commit_avatar_to_story()" title="Click to insert into chat">
+				</div>
+				
+				<div class="avatar-controls">
+					<button type="button" class="btn btn-primary avatar-btn" onclick="generate_dynamic_avatar()" title="Refresh Avatar">🔄</button>
+					<button type="button" class="btn btn-primary avatar-btn" id="avatar_btn_revert" onclick="revert_avatar()" title="Revert (Undo)" disabled>↩️</button>
+					<button type="button" class="btn btn-primary avatar-btn" onclick="show_avatar_gallery()" title="Gallery">🔍</button>
+					<button type="button" class="btn btn-primary avatar-btn" onclick="show_avatar_settings()" title="Settings">⚙️</button>
+				</div>
+				
+				<div class="avatar-status-box">
+					<div class="avatar-char-name" id="avatar_char_name">Character</div>
+					<div class="avatar-desc-text" id="avatar_desc_text">Ready.</div>
+				</div>
+				
+				<button class="avatar-collapse-btn" onclick="toggle_avatar_dock(false)" title="Collapse">▲</button>
+			</div>
+		</div>
+
+		<!-- Settings Modal (Reuse existing popup structure) -->
+		<div class="popupcontainer flex hidden" id="avatar_settings_modal">
+			<div class="popupbg flex"></div>
+			<div class="nspopup flexsizevsmall">
+				<div class="popuptitlebar">
+					<div class="popuptitletext">Avatar Visualizer Settings</div>
+				</div>
+				<div class="menutext">
+					<div class="settinglabel">
+						<div class="justifyleft settingsmall">Base Appearance</div>
+						<textarea class="form-control menuinput_multiline" id="av_base_appearance" rows="3" placeholder="e.g. Tall female elf, long blonde hair, green eyes..."></textarea>
+					</div>
+					<div class="settinglabel">
+						<div class="justifyleft settingsmall">Prompt Template (Must ask for JSON)</div>
+						<textarea class="form-control menuinput_multiline" id="av_prompt_template" rows="3"></textarea>
+					</div>
+					<div class="inlinelabel">
+						<div class="justifyleft rowitem">Context Depth (Turns)</div>
+						<input type="number" class="form-control" id="av_context_depth" style="width:60px" min="1" max="20">
+					</div>
+					<div class="inlinelabel">
+						<div class="justifyleft rowitem">Parallel Generations (N)</div>
+						<input type="number" class="form-control" id="av_parallel_n" style="width:60px" min="1" max="4">
+					</div>
+					<div class="inlinelabel">
+						<div class="justifyleft rowitem">Image API Model</div>
+						<input type="text" class="form-control" id="av_api_model" style="width:150px">
+					</div>
+					<div class="settinglabel">
+						<div class="justifyleft settingsmall">Last Raw Prompt Used</div>
+						<textarea class="form-control menuinput_multiline" id="av_last_prompt" rows="2" readonly></textarea>
+					</div>
+				</div>
+				<div class="popupfooter">
+					<button type="button" class="btn btn-primary" onclick="save_avatar_settings()">Save</button>
+					<button type="button" class="btn btn-primary" onclick="document.getElementById('avatar_settings_modal').classList.add('hidden')">Cancel</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Gallery Modal -->
+		<div class="popupcontainer flex hidden" id="avatar_gallery_modal">
+			<div class="popupbg flex"></div>
+			<div class="nspopup flexsize">
+				<div class="popuptitlebar">
+					<div class="popuptitletext">Avatar Gallery</div>
+				</div>
+				<div class="menutext" id="avatar_gallery_grid" class="gallery-grid" style="overflow-y:auto; max-height:60vh;">
+					<!-- Content injected by JS -->
+				</div>
+				<div class="popupfooter">
+					<button type="button" class="btn btn-primary" onclick="document.getElementById('avatar_gallery_modal').classList.add('hidden')">Close</button>
+				</div>
+			</div>
+		</div>
+		`;
+
+		// Append to body
+		const div = document.createElement('div');
+		div.innerHTML = dockHtml;
+		document.body.appendChild(div);
+		
+		// Initial UI Sync
+		update_avatar_ui();
+	}
+
+	// --- Avatar Toggling ---
+
+	function toggle_avatar_dock(expand) {
+		const pill = document.getElementById("avatar_pill");
+		const row = document.getElementById("avatar_row");
+		
+		if (expand) {
+			pill.classList.add("hidden");
+			row.classList.remove("hidden");
+			// Update name just in case it changed
+			let charName = localsettings.chatopponent ? localsettings.chatopponent.split("||$||")[0] : "Character";
+			document.getElementById("avatar_char_name").innerText = charName;
+		} else {
+			pill.classList.remove("hidden");
+			row.classList.add("hidden");
+		}
+	}
+
+	function update_avatar_ui() {
+		const imgMain = document.getElementById("avatar_main_img");
+		const imgPill = document.getElementById("avatar_pill_img");
+		const textBox = document.getElementById("avatar_desc_text");
+		const revertBtn = document.getElementById("avatar_btn_revert");
+
+		// Update Images
+		let imgSrc = avatar_state.current.image || niko_square;
+		imgMain.src = imgSrc;
+		imgPill.src = imgSrc;
+
+		// Update Text
+		textBox.innerText = avatar_state.current.text || "Ready.";
+
+		// Update Revert Button
+		revertBtn.disabled = (avatar_state.previous === null);
+	}
+
+	// --- Settings Logic ---
+
+	function show_avatar_settings() {
+		document.getElementById("av_base_appearance").value = avatar_state.settings.base_appearance;
+		document.getElementById("av_prompt_template").value = avatar_state.settings.prompt_template;
+		document.getElementById("av_context_depth").value = avatar_state.settings.context_depth;
+		document.getElementById("av_parallel_n").value = avatar_state.settings.parallel_n;
+		document.getElementById("av_api_model").value = avatar_state.settings.api_model;
+		document.getElementById("av_last_prompt").value = avatar_state.current.prompt_used;
+		
+		document.getElementById("avatar_settings_modal").classList.remove("hidden");
+	}
+
+	function save_avatar_settings() {
+		avatar_state.settings.base_appearance = document.getElementById("av_base_appearance").value;
+		avatar_state.settings.prompt_template = document.getElementById("av_prompt_template").value;
+		avatar_state.settings.context_depth = parseInt(document.getElementById("av_context_depth").value);
+		avatar_state.settings.parallel_n = parseInt(document.getElementById("av_parallel_n").value);
+		avatar_state.settings.api_model = document.getElementById("av_api_model").value;
+		
+		document.getElementById("avatar_settings_modal").classList.add("hidden");
+		autosave(); // Trigger main app autosave
+	}
+
+	// --- Persistence Integration ---
+	function get_avatar_save_data() {
+		return avatar_state;
+	}
+
+	function load_avatar_save_data(data) {
+		if (data) {
+			avatar_state = data;
+			update_avatar_ui();
+			// Auto-show pill if data exists
+			if(avatar_state.current.image) {
+				document.getElementById("avatar_pill").classList.remove("hidden");
+			}
+		}
+	}
+
+	// --- The Core Logic (Sidecar Workflow) ---
+
+	const generate_dynamic_avatar = asyncRunner(function* () {
+		if (avatar_state.is_generating) return;
+		
+		// 0. Setup UI State
+		avatar_state.is_generating = true;
+		const imgMain = document.getElementById("avatar_main_img");
+		imgMain.classList.add("avatar-generating");
+		imgMain.classList.remove("avatar-error");
+		document.getElementById("avatar_desc_text").innerText = "Analyzing story context...";
+
+		// 1. Snapshot for Revert
+		avatar_state.previous = JSON.parse(JSON.stringify(avatar_state.current));
+		update_avatar_ui(); // Updates the revert button state
+
+		try {
+			// 2. Prepare Context for LLM
+			let depth = avatar_state.settings.context_depth;
+			let recent_text = "";
+			let history = gametext_arr.slice(-depth);
+			for(let chunk of history) {
+				// Strip images/audio tags from text to save tokens
+				recent_text += chunk.replace(/\[<\|.*?\|>\]/g, "") + "\n";
+			}
+
+			// 3. Prepare Prompt
+			let charName = localsettings.chatopponent || "the character";
+			if(charName.includes("||$||")) charName = charName.split("||$||")[0]; // Just take first char for now
+
+			let sysPrompt = avatar_state.settings.prompt_template.replace("{{char}}", charName);
+			let userPrompt = `Base Appearance: ${avatar_state.settings.base_appearance}\n\nStory Context:\n${recent_text}`;
+			
+			// 4. Call Text API (Using the existing endpoint configuration if possible)
+			// Note: In a real integration, we'd reuse the `custom_oai_endpoint` variables.
+			// For this snippet, I assume standard OAI-compatible structure.
+			
+			let text_api_url = custom_oai_endpoint || default_oai_base;
+			// Fix standard URL construction if needed
+			if (!text_api_url.endsWith("/chat/completions")) {
+				// Basic heuristic to find the endpoint
+				if(text_api_url.endsWith("/v1")) text_api_url += "/chat/completions";
+				else text_api_url += "/v1/chat/completions";
+			}
+			
+			let apiKey = custom_oai_key || dummy_api_key;
+
+			// Perform fetch
+			let textResponse = yield fetch(text_api_url, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${apiKey}`
+				},
+				body: JSON.stringify({
+					model: custom_oai_model || "gpt-3.5-turbo",
+					messages: [
+						{ role: "system", content: sysPrompt },
+						{ role: "user", content: userPrompt }
+					],
+					temperature: 0.7,
+					response_format: { type: "json_object" } // Force JSON if supported
+				})
+			}).then(r => r.json());
+
+			// 5. Parse Text Result
+			let content = textResponse.choices[0].message.content;
+			let jsonResult;
+			try {
+				jsonResult = JSON.parse(content);
+			} catch (e) {
+				// Fallback regex parsing if JSON mode failed
+				let desc = content.match(/"display_text":\s*"(.*?)"/)?.[1] || "Updated.";
+				let vis = content.match(/"visual_prompt":\s*"(.*?)"/)?.[1] || "";
+				jsonResult = { display_text: desc, visual_prompt: vis };
+			}
+
+			// Update Text UI immediately
+			avatar_state.current.text = jsonResult.display_text;
+			document.getElementById("avatar_desc_text").innerText = jsonResult.display_text;
+			document.getElementById("avatar_desc_text").scrollTop = 0;
+
+			// 6. Construct Image Prompt
+			let finalImagePrompt = `${jsonResult.visual_prompt}`;
+			avatar_state.current.prompt_used = finalImagePrompt; // Save for debugging
+
+			// 7. Call Image API (NanoGPT style)
+			document.getElementById("avatar_desc_text").innerText += "\n[Rendering...]";
+			
+			let imgResponse = yield fetch(avatar_state.settings.image_endpoint, {
+				method: 'POST',
+				headers: {
+					'Authorization': `Bearer ${apiKey}`, // Reusing main key, or add specific key field
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					model: avatar_state.settings.api_model,
+					prompt: finalImagePrompt,
+					n: avatar_state.settings.parallel_n,
+					guidance_scale: 3.5,
+					num_inference_steps: 50,
+					size: '1024x1024', // Portrait usually better for avatars
+					response_format: 'b64_json' // Prefer base64 to avoid URL expiry
+				})
+			}).then(r => r.json());
+
+			// 8. Process Image Result
+			avatar_state.session_cache = []; // Clear old cache
+			
+			let dataList = imgResponse.data || []; // Standard OAI format
+			// NanoGPT might return differently, adjust based on actual API response structure
+			// Assuming standard OAI format: { data: [{ b64_json: "..." }, ...] }
+			
+			if (dataList.length > 0) {
+				// Cache all results
+				for(let item of dataList) {
+					let imgStr = item.b64_json;
+					if (!imgStr.startsWith("data:image")) imgStr = "data:image/png;base64," + imgStr;
+					avatar_state.session_cache.push({
+						image: imgStr,
+						prompt: finalImagePrompt
+					});
+				}
+
+				// Set the first one as current
+				avatar_state.current.image = avatar_state.session_cache[0].image;
+				update_avatar_ui();
+			} else {
+				throw new Error("No image data received");
+			}
+
+		} catch (err) {
+			console.error("Avatar Gen Error:", err);
+			document.getElementById("avatar_desc_text").innerText = "Error: " + err.message;
+			imgMain.classList.add("avatar-error");
+		} finally {
+			imgMain.classList.remove("avatar-generating");
+			avatar_state.is_generating = false;
+			autosave();
+		}
+	});
+
+	function revert_avatar() {
+		if (avatar_state.previous) {
+			avatar_state.current = JSON.parse(JSON.stringify(avatar_state.previous));
+			avatar_state.previous = null; // One-time undo
+			update_avatar_ui();
+			autosave();
+		}
+	}
+
+	// --- Commit to Story ---
+
+	function commit_avatar_to_story() {
+		if (!avatar_state.current.image) return;
+
+		// Use existing KAL function to upload/store image
+		// self_upload_img expects raw data URI.
+		// It pushes to gametext_arr automatically.
+		
+		// We want to add context text? Maybe just the image.
+		// Let's create a wrapper to emulate the file upload process
+		let base64Data = avatar_state.current.image;
+		let filename = `avatar_${Date.now()}.png`;
+		
+		self_upload_img(base64Data, filename);
+		
+		// Trigger render
+		render_gametext(true);
+		
+		// Visual feedback
+		showToast("Avatar inserted into chat!");
+	}
+
+	// --- Gallery Logic ---
+
+	function show_avatar_gallery() {
+		const grid = document.getElementById("avatar_gallery_grid");
+		grid.innerHTML = "";
+
+		if (avatar_state.session_cache.length === 0) {
+			grid.innerHTML = "<p style='padding:20px'>No images generated yet.</p>";
+		} else {
+			avatar_state.session_cache.forEach((item, index) => {
+				let div = document.createElement("div");
+				div.className = "gallery-item";
+				div.innerHTML = `<img src="${item.image}">`;
+				div.onclick = function() {
+					// Set as current
+					avatar_state.current.image = item.image;
+					update_avatar_ui();
+					document.getElementById("avatar_gallery_modal").classList.add("hidden");
+				};
+				grid.appendChild(div);
+			});
+		}
+
+		document.getElementById("avatar_gallery_modal").classList.remove("hidden");
 	}
 
 	//saving and loading functionality
@@ -9100,6 +9686,7 @@ Current version indicated by LITEVER below.
 		new_save_storyobj.documentdb_chunksize = documentdb_chunksize;
 		new_save_storyobj.documentdb_data = documentdb_data;
 		new_save_storyobj.altbranches = alt_gametext_branches;
+		new_save_storyobj.dynamic_avatar_settings = get_avatar_save_data()
 
 		if (export_settings) {
 			new_save_storyobj.savedsettings = JSON.parse(JSON.stringify(localsettings));
@@ -9384,6 +9971,9 @@ Current version indicated by LITEVER below.
 				if (storyobj.automem_script) {
 					current_automem_script = storyobj.automem_script;
 				}
+				if (storyobj.dynamic_avatar_settings) {
+					load_avatar_save_data(storyobj.dynamic_avatar_settings);
+				}
 				if (storyobj.worldinfo) {
 					current_wi = storyobj.worldinfo;
 				}
@@ -9498,6 +10088,9 @@ Current version indicated by LITEVER below.
 				}
 				if (storyobj.automem_script) {
 					current_automem_script = storyobj.automem_script;
+				}
+				if (storyobj.dynamic_avatar_settings) {
+					load_avatar_save_data(storyobj.dynamic_avatar_settings);
 				}
 				if (storyobj.worldinfo_v2 != null && storyobj.worldinfo_v2.entries != null) {
 					for (var key in storyobj.worldinfo_v2.entries) {
