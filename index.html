@@ -2672,76 +2672,48 @@ Current version indicated by LITEVER below.
 	}
 
 	/* Avatar Module Styles */
-	#avatar_dock {
-		position: fixed;
-		/* Move to Top-Left to avoid Input Box/Action Buttons at the bottom */
-		top: 100px; 
-		left: 10px;
-		
-		/* Lower Z-Index: High enough to float over chat, low enough to be under Modals */
-		z-index: 95; 
-		
-		font-family: sans-serif;
+	#avatar_pill_wrapper {
 		display: flex;
-		flex-direction: column; /* Stack downwards from top */
-		align-items: flex-start;
-		pointer-events: none;
+		align-items: center;
+		justify-content: center;
+		margin-right: 8px;
+		cursor: pointer;
+		transition: transform 0.1s;
 	}
-
-	/* Ensure Modals are always on top of the dock */
-	#avatar_settings_modal, #avatar_gallery_modal {
-		z-index: 20000 !important;
+	#avatar_pill_wrapper:hover {
+		transform: scale(1.1);
 	}
-
-	#avatar_pill {
+	#avatar_pill_img {
 		width: 50px;
 		height: 50px;
-		background-color: var(--theme_color_bg);
-		border: 2px solid var(--theme_color_border);
 		border-radius: 50%;
-		cursor: pointer;
-		pointer-events: auto;
-		overflow: hidden;
-		box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-		transition: all 0.2s ease;
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		margin-bottom: 5px; /* Spacing between pill and row */
-	}
-
-	#avatar_pill:hover {
-		transform: scale(1.05);
-		border-color: var(--theme_color_highlight);
-	}
-
-	#avatar_row {
-		background-color: var(--theme_color_bg);
 		border: 1px solid var(--theme_color_border);
-		border-radius: 0 12px 12px 12px; /* Top-left corner sharp to hug the anchor point */
-		padding: 8px;
+		object-fit: cover;
+	}
+
+	/* EXPANDED ROW (Below Top Menu) */
+	#avatar_container_row {
+		width: 100%;
+		background-color: var(--theme_color_input_bg); /* Slightly darker/distinct from main bg */
+		border-bottom: 1px solid var(--theme_color_border);
+		padding: 6px 10px;
 		display: flex;
 		flex-direction: row;
-		align-items: flex-start;
+		align-items: center;
 		gap: 10px;
-		pointer-events: auto;
-		box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-		min-width: 320px;
-		max-width: 85vw;
-		
-		/* Animation: Slide DOWN from top */
-		animation: slideDown 0.2s ease-out;
+		box-sizing: border-box;
+		/* Animate height/opacity for smooth toggle */
+		animation: expandRow 0.2s ease-out;
 	}
 
-	@keyframes slideDown {
-		from { opacity: 0; transform: translateY(-20px); }
+	@keyframes expandRow {
+		from { opacity: 0; transform: translateY(-5px); }
 		to { opacity: 1; transform: translateY(0); }
 	}
 
 	.avatar-preview-container {
-		position: relative;
-		width: 80px;
-		height: 80px;
+		width: 60px;
+		height: 60px;
 		flex-shrink: 0;
 	}
 
@@ -2751,12 +2723,11 @@ Current version indicated by LITEVER below.
 		object-fit: cover;
 		border-radius: 6px;
 		border: 2px solid var(--theme_color_border);
-		cursor: pointer;
-		transition: border-color 0.2s;
+		cursor: pointer; /* Now indicates Magnify */
 	}
 
 	.avatar-img-main:hover {
-		border-color: #00ff00;
+		border-color: var(--theme_color_highlight);
 	}
 
 	.avatar-generating {
@@ -2768,92 +2739,79 @@ Current version indicated by LITEVER below.
 		border-color: #ff0000 !important;
 	}
 
-	@keyframes glowGreen {
-		from { box-shadow: 0 0 5px #00ff00; }
-		to { box-shadow: 0 0 15px #00ff00; }
-	}
-
+	/* Controls grouping */
 	.avatar-controls {
 		display: flex;
-		flex-direction: column;
 		gap: 4px;
+		flex-shrink: 0;
 	}
 
+	/* Specific button styles to match top bar buttons */
 	.avatar-btn {
-		width: 28px;
-		height: 28px;
+		width: 30px;
+		height: 30px;
 		padding: 0;
-		font-size: 14px;
-		border-radius: 4px;
+		font-size: 16px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		border-radius: 4px;
 	}
 
 	.avatar-status-box {
 		flex-grow: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
-		max-height: 80px;
-		overflow-y: auto;
+		overflow: hidden;
+		height: 60px;
 	}
 
 	.avatar-char-name {
 		font-weight: bold;
 		color: var(--theme_color_text);
 		font-size: 0.85em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.avatar-desc-text {
 		font-size: 0.75em;
-		color: var(--theme_color_input_text);
-		background-color: var(--theme_color_input_bg);
-		padding: 4px;
-		border-radius: 4px;
+		color: var(--theme_color_text);
+		opacity: 0.8;
 		white-space: pre-wrap;
-		height: 100%;
-		min-height: 50px;
+		overflow-y: auto;
+		line-height: 1.1;
 	}
 
-	.avatar-collapse-btn {
-		align-self: flex-start;
+	.avatar-close-btn {
 		background: none;
 		border: none;
 		color: var(--theme_color_text);
+		font-size: 12px;
 		cursor: pointer;
-		font-weight: bold;
-		font-size: 16px;
-		line-height: 1;
-		padding: 0 4px;
+		padding: 4px;
+		opacity: 0.5;
 	}
+	.avatar-close-btn:hover { opacity: 1; }
 
-	/* Gallery Grid Adjustments */
+	/* Modal tweaks */
+	#avatar_settings_modal, #avatar_gallery_modal {
+		z-index: 20000 !important;
+	}
 	.gallery-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
 		gap: 8px;
 		padding: 8px;
 	}
-
-	.gallery-item {
-		position: relative;
-		border: 2px solid transparent;
-		cursor: pointer;
-		border-radius: 4px;
-		overflow: hidden;
-		aspect-ratio: 2 / 3; /* Assuming portrait gens */
-	}
-
-	.gallery-item:hover {
-		border-color: var(--theme_color_highlight);
-	}
-
 	.gallery-item img {
 		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
+		cursor: pointer;
+		border: 2px solid transparent;
+	}
+	.gallery-item img:hover {
+		border-color: var(--theme_color_highlight);
 	}
 
 	/* Printer friendly view */
@@ -6137,41 +6095,53 @@ Current version indicated by LITEVER below.
 	};
 
 	function init_avatar_module() {
-		// 1. Inject HTML into body
-		const dockHtml = `
-		<div id="avatar_dock">
-			<!-- Collapsed State -->
-			<div id="avatar_pill" onclick="toggle_avatar_dock(true)">
-				<!-- Pill icon -->
-				<img id="avatar_pill_img" src="${niko_square}" style="width:100%; height:100%; object-fit:cover;">
+		const pillHtml = `
+		<div id="avatar_pill_wrapper" class="hidden" title="Show Avatar Panel" onclick="toggle_avatar_dock(true)">
+			<img id="avatar_pill_img" src="${niko_square}">
+		</div>`;
+		
+		// Convert to node
+		const pillDiv = document.createElement('div');
+		pillDiv.innerHTML = pillHtml;
+		const pillNode = pillDiv.firstElementChild;
+
+		// INSERT PILL: Find 'topmenu' and insert before 'quick-ctx-wrapper'
+		const topMenu = document.getElementById("topmenu");
+		const quickCtx = topMenu.querySelector(".quick-ctx-wrapper");
+		if (quickCtx) {
+			topMenu.insertBefore(pillNode, quickCtx);
+		} else {
+			// Fallback if quick ctx not found (rare), append to end of internal div
+			topMenu.firstElementChild.appendChild(pillNode);
+		}
+
+		// 3. Create the Expanded Row (To insert BELOW Top Menu)
+		const rowHtml = `
+		<div id="avatar_container_row" class="hidden">
+			<!-- Preview Image -->
+			<div class="avatar-preview-container">
+				<img id="avatar_main_img" class="avatar-img-main" src="${niko_square}" onclick="show_avatar_gallery()" title="Click to view Gallery / Magnify">
 			</div>
-			
-			<!-- Expanded State -->
-			<div id="avatar_row" class="hidden">
-				<!-- Collapse Button (Moved to left for Top-Left orientation logic, or keep right) -->
-				<!-- Let's keep structure but visual flow is Left->Right -->
-				
-				<div class="avatar-preview-container">
-					<img id="avatar_main_img" class="avatar-img-main" src="${niko_square}" onclick="commit_avatar_to_story()" title="Click to insert into chat">
-				</div>
-				
-				<div class="avatar-controls">
-					<button type="button" class="btn btn-primary avatar-btn" onclick="generate_dynamic_avatar()" title="Refresh Avatar">🔄</button>
-					<button type="button" class="btn btn-primary avatar-btn" id="avatar_btn_revert" onclick="revert_avatar()" title="Revert (Undo)" disabled>↩️</button>
-					<button type="button" class="btn btn-primary avatar-btn" onclick="show_avatar_gallery()" title="Gallery">🔍</button>
-					<button type="button" class="btn btn-primary avatar-btn" onclick="show_avatar_settings()" title="Settings">⚙️</button>
-				</div>
-				
-				<div class="avatar-status-box">
-					<div class="avatar-char-name" id="avatar_char_name">Character</div>
-					<div class="avatar-desc-text" id="avatar_desc_text">Ready.</div>
-				</div>
-				
-				<button class="avatar-collapse-btn" onclick="toggle_avatar_dock(false)" title="Collapse">▲</button>
+
+			<!-- Controls -->
+			<div class="avatar-controls">
+				<button type="button" class="btn btn-primary avatar-btn" onclick="generate_dynamic_avatar()" title="Refresh Avatar">🔄</button>
+				<button type="button" class="btn btn-primary avatar-btn" id="avatar_btn_revert" onclick="revert_avatar()" title="Revert (Undo)" disabled>↩️</button>
+				<button type="button" class="btn btn-primary avatar-btn" onclick="commit_avatar_to_story()" title="Insert Image into Chat">➕</button>
+				<button type="button" class="btn btn-primary avatar-btn" onclick="show_avatar_settings()" title="Settings">⚙️</button>
 			</div>
+
+			<!-- Text Info -->
+			<div class="avatar-status-box">
+				<div class="avatar-char-name" id="avatar_char_name">Character</div>
+				<div class="avatar-desc-text" id="avatar_desc_text">Ready.</div>
+			</div>
+
+			<!-- Collapse -->
+			<button class="avatar-close-btn" onclick="toggle_avatar_dock(false)" title="Hide Panel">▲</button>
 		</div>
 
-		<!-- Settings Modal (Reuse existing popup structure) -->
+		<!-- Modals (Settings & Gallery) - Appended to body as usual -->
 		<div class="popupcontainer flex hidden" id="avatar_settings_modal">
 			<div class="popupbg flex"></div>
 			<div class="nspopup flexsizevsmall">
@@ -6211,16 +6181,13 @@ Current version indicated by LITEVER below.
 			</div>
 		</div>
 
-		<!-- Gallery Modal -->
 		<div class="popupcontainer flex hidden" id="avatar_gallery_modal">
 			<div class="popupbg flex"></div>
 			<div class="nspopup flexsize">
 				<div class="popuptitlebar">
 					<div class="popuptitletext">Avatar Gallery</div>
 				</div>
-				<div class="menutext" id="avatar_gallery_grid" class="gallery-grid" style="overflow-y:auto; max-height:60vh;">
-					<!-- Content injected by JS -->
-				</div>
+				<div class="menutext" id="avatar_gallery_grid" class="gallery-grid" style="overflow-y:auto; max-height:60vh;"></div>
 				<div class="popupfooter">
 					<button type="button" class="btn btn-primary" onclick="document.getElementById('avatar_gallery_modal').classList.add('hidden')">Close</button>
 				</div>
@@ -6228,25 +6195,32 @@ Current version indicated by LITEVER below.
 		</div>
 		`;
 
-		// Append to body
-		const div = document.createElement('div');
-		div.innerHTML = dockHtml;
-		document.body.appendChild(div);
+		const rowDiv = document.createElement('div');
+		rowDiv.innerHTML = rowHtml;
 		
-		// Initial UI Sync
+		// INSERT ROW: Immediately after #topmenu
+		const mainContainer = document.getElementById("maincontainer");
+		mainContainer.insertBefore(rowDiv, topMenu.nextSibling);
+
+		// --- FIX: UNHIDE PILL ON START ---
+		// If the module is enabled in settings (default true), show the pill immediately
+		if (avatar_state.settings.enabled) {
+			document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
+		}
+
 		update_avatar_ui();
 	}
 
 	// --- Avatar Toggling ---
-
 	function toggle_avatar_dock(expand) {
-		const pill = document.getElementById("avatar_pill");
-		const row = document.getElementById("avatar_row");
+		const pill = document.getElementById("avatar_pill_wrapper");
+		const row = document.getElementById("avatar_container_row");
 		
 		if (expand) {
 			pill.classList.add("hidden");
 			row.classList.remove("hidden");
-			// Update name just in case it changed
+			
+			// Update name
 			let charName = localsettings.chatopponent ? localsettings.chatopponent.split("||$||")[0] : "Character";
 			document.getElementById("avatar_char_name").innerText = charName;
 		} else {
@@ -6263,14 +6237,14 @@ Current version indicated by LITEVER below.
 
 		// Update Images
 		let imgSrc = avatar_state.current.image || niko_square;
-		imgMain.src = imgSrc;
-		imgPill.src = imgSrc;
+		if (imgMain) imgMain.src = imgSrc;
+		if (imgPill) imgPill.src = imgSrc;
 
 		// Update Text
-		textBox.innerText = avatar_state.current.text || "Ready.";
+		if (textBox) textBox.innerText = avatar_state.current.text || "Ready.";
 
 		// Update Revert Button
-		revertBtn.disabled = (avatar_state.previous === null);
+		if (revertBtn) revertBtn.disabled = (avatar_state.previous === null);
 	}
 
 	// --- Settings Logic ---
@@ -6306,9 +6280,11 @@ Current version indicated by LITEVER below.
 		if (data) {
 			avatar_state = data;
 			update_avatar_ui();
-			// Auto-show pill if data exists
+			
+			// FIX: Use correct ID 'avatar_pill_wrapper'
 			if(avatar_state.current.image) {
-				document.getElementById("avatar_pill").classList.remove("hidden");
+				let pill = document.getElementById("avatar_pill_wrapper");
+				if(pill) pill.classList.remove("hidden");
 			}
 		}
 	}
@@ -6465,7 +6441,6 @@ Current version indicated by LITEVER below.
 	}
 
 	// --- Commit to Story ---
-
 	function commit_avatar_to_story() {
 		if (!avatar_state.current.image) return;
 
@@ -6488,22 +6463,35 @@ Current version indicated by LITEVER below.
 	}
 
 	// --- Gallery Logic ---
-
 	function show_avatar_gallery() {
 		const grid = document.getElementById("avatar_gallery_grid");
 		grid.innerHTML = "";
 
 		if (avatar_state.session_cache.length === 0) {
-			grid.innerHTML = "<p style='padding:20px'>No images generated yet.</p>";
+			// If empty, just show current image
+			if(avatar_state.current.image) {
+				let div = document.createElement("div");
+				div.className = "gallery-item";
+				div.innerHTML = `<img src="${avatar_state.current.image}" title="Current Image">`;
+				grid.appendChild(div);
+			} else {
+				grid.innerHTML = "<p style='padding:20px'>No images generated yet.</p>";
+			}
 		} else {
 			avatar_state.session_cache.forEach((item, index) => {
 				let div = document.createElement("div");
 				div.className = "gallery-item";
+				// Highlight if it matches current
+				if (item.image === avatar_state.current.image) {
+					div.style.borderColor = "#00ff00";
+				}
+				
 				div.innerHTML = `<img src="${item.image}">`;
 				div.onclick = function() {
-					// Set as current
+					// Set as current active avatar
 					avatar_state.current.image = item.image;
 					update_avatar_ui();
+					// We keep modal open or close? Usually closing is better feedback.
 					document.getElementById("avatar_gallery_modal").classList.add("hidden");
 				};
 				grid.appendChild(div);
@@ -16565,6 +16553,23 @@ Current version indicated by LITEVER below.
 		}else if(document.getElementById("generate_images_mode").value==5)
 		{
 			document.getElementById("generate_images_pollinations_container").classList.remove("hidden");
+		}
+
+		// ADD THIS: Hide/Show Avatar Pill based on global image setting
+		let pill = document.getElementById("avatar_pill_wrapper");
+		let row = document.getElementById("avatar_container_row");
+		
+		if(pill && row) {
+			if(localsettings.generate_images_mode == 0) {
+				// If image gen is disabled globally, hide everything
+				pill.classList.add("hidden");
+				row.classList.add("hidden");
+			} else {
+				// If enabled, show pill (assuming row isn't open)
+				if(row.classList.contains("hidden")) {
+					pill.classList.remove("hidden");
+				}
+			}
 		}
 	}
 
