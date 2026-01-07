@@ -2766,15 +2766,6 @@ Current version indicated by LITEVER below.
 		height: 60px;
 	}
 
-	.avatar-char-name {
-		font-weight: bold;
-		color: var(--theme_color_text);
-		font-size: 0.85em;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
 	.avatar-desc-text {
 		font-size: 0.75em;
 		color: var(--theme_color_text);
@@ -6133,7 +6124,6 @@ Current version indicated by LITEVER below.
 
 			<!-- Text Info -->
 			<div class="avatar-status-box">
-				<div class="avatar-char-name" id="avatar_char_name">Character</div>
 				<div class="avatar-desc-text" id="avatar_desc_text">Ready.</div>
 			</div>
 
@@ -6219,10 +6209,6 @@ Current version indicated by LITEVER below.
 		if (expand) {
 			pill.classList.add("hidden");
 			row.classList.remove("hidden");
-			
-			// Update name
-			let charName = localsettings.chatopponent ? localsettings.chatopponent.split("||$||")[0] : "Character";
-			document.getElementById("avatar_char_name").innerText = charName;
 		} else {
 			pill.classList.remove("hidden");
 			row.classList.add("hidden");
