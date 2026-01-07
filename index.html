@@ -20473,16 +20473,15 @@ Current version indicated by LITEVER below.
 			request_slots = [];
 			active_requests_count = count;
 
+			// even if parallel is "off", initialize this for use
+			parallel_draft_data = {
+				target_idx: gametext_arr.length, 
+				active_idx: 0,
+				versions: new Array(count).fill(""),
+				models: new Array(count).fill("")
+			};
 			if (count > 1) {
-				parallel_draft_data = {
-					target_idx: gametext_arr.length, 
-					active_idx: 0,
-					versions: new Array(count).fill(""),
-					models: new Array(count).fill("")
-				};
 				gametext_arr.push(""); // Reserve the spot in history for switcher and content
-			} else {
-				parallel_draft_data = null;
 			}
 
 			// Use a unique ID to keep the UI in "Busy" mode until all slots finish
@@ -23683,7 +23682,7 @@ Current version indicated by LITEVER below.
 					let chunk = escape_html(gametext_arr[i]);
 					
 					// If this is the turn with versions, wrap it and add the switcher
-					if (parallel_draft_data && i === parallel_draft_data.target_idx) {
+					if (parallel_draft_data && i === parallel_draft_data.target_idx && localsettings.parallel_count > 1) {
 						let switcher = generate_version_switcher_html();
 						fulltxt += switcher + `%SpnStg%` + chunk + `%SpnEtg%`;
 					} else {
@@ -26842,7 +26841,7 @@ Current version indicated by LITEVER below.
 			let turn_switcher_html = "";
 			let pre_turn_switcher_html = "";
 			let post_turn_switcher_html = "";
-			if (!isPreview && parallel_draft_data && i === chatunits.length - 1 && !chatunits[i].myturn) {
+			if (!isPreview && parallel_draft_data  && localsettings.parallel_count > 1 && i === chatunits.length - 1 && !chatunits[i].myturn) {
 				turn_switcher_html = generate_version_switcher_html();
 				pre_turn_switcher_html = turn_switcher_html + "<hr>"
 				post_turn_switcher_html = "<hr>" + turn_switcher_html
