@@ -2711,12 +2711,6 @@ Current version indicated by LITEVER below.
 		to { opacity: 1; transform: translateY(0); }
 	}
 
-	.avatar-preview-container {
-		width: 60px;
-		height: 60px;
-		flex-shrink: 0;
-	}
-
 	.avatar-img-main {
 		width: 100%;
 		height: 100%;
@@ -2739,13 +2733,6 @@ Current version indicated by LITEVER below.
 		border-color: #ff0000 !important;
 	}
 
-	/* Controls grouping */
-	.avatar-controls {
-		display: flex;
-		gap: 4px;
-		flex-shrink: 0;
-	}
-
 	/* Specific button styles to match top bar buttons */
 	.avatar-btn {
 		width: 30px;
@@ -2758,52 +2745,102 @@ Current version indicated by LITEVER below.
 		border-radius: 4px;
 	}
 
-	.avatar-status-box {
-		flex-grow: 1;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		height: 60px;
-	}
-
-	.avatar-desc-text {
-		font-size: 0.75em;
-		color: var(--theme_color_text);
-		opacity: 0.8;
-		white-space: pre-wrap;
-		overflow-y: auto;
-		line-height: 1.1;
-	}
-
-	.avatar-close-btn {
-		background: none;
-		border: none;
-		color: var(--theme_color_text);
-		font-size: 12px;
-		cursor: pointer;
-		padding: 4px;
-		opacity: 0.5;
-	}
-	.avatar-close-btn:hover { opacity: 1; }
-
 	/* Modal tweaks */
 	#avatar_settings_modal, #avatar_gallery_modal {
 		z-index: 20000 !important;
 	}
-	.gallery-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-		gap: 8px;
-		padding: 8px;
-	}
-	.gallery-item img {
-		width: 100%;
-		cursor: pointer;
-		border: 2px solid transparent;
-	}
-	.gallery-item img:hover {
-		border-color: var(--theme_color_highlight);
-	}
+
+    .avatar-row-container {
+        display: flex;
+        height: 80px;
+        background-color: var(--theme_color_input_bg);
+        border-bottom: 1px solid var(--theme_color_border);
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .avatar-img-container {
+        width: 80px;
+        height: 80px;
+        flex-shrink: 0;
+        border-right: 1px solid var(--theme_color_border);
+    }
+    .avatar-img-main {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        cursor: pointer;
+    }
+    .avatar-controls-grid {
+        width: 130px;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        border-right: 1px solid var(--theme_color_border);
+    }
+    .avatar-ctrl-row {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+    }
+    .avatar-btn {
+        flex: 1;
+        border: none;
+        background: transparent;
+        color: var(--theme_color_text);
+        font-size: 14px;
+        cursor: pointer;
+        padding: 0;
+        border-right: 1px solid #ffffff11;
+        border-bottom: 1px solid #ffffff11;
+    }
+    .avatar-btn:hover { background-color: #ffffff22; }
+    .avatar-text-container {
+        flex-grow: 1;
+        padding: 6px;
+        font-size: 0.8em;
+        overflow-y: auto;
+        color: var(--theme_color_text);
+        line-height: 1.2;
+    }
+    /* Gallery Styles */
+    .av-gallery-viewer {
+        display: flex;
+        flex-direction: column;
+        height: 80vh;
+        width: 100%;
+    }
+    .av-gallery-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px;
+        background: var(--theme_color_bg_dark);
+        border-bottom: 1px solid var(--theme_color_border);
+    }
+    .av-gallery-stage {
+        flex: 1;
+        background: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+        min-height: 0;
+    }
+    .av-gallery-img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+    .av-gallery-prompt {
+        height: 100px;
+        padding: 10px;
+        background: var(--theme_color_input_bg);
+        border-top: 1px solid var(--theme_color_border);
+        font-size: 0.8em;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }
+
 
 	/* Printer friendly view */
 	@media print {
@@ -6063,428 +6100,540 @@ Current version indicated by LITEVER below.
 		show_quick_replies(); // Return to selector
 	}
 
-	// Global State for Avatar Module
+	// --- AVATAR STATE 2.0 ---
 	var avatar_state = {
 		settings: {
 			enabled: true,
-			base_appearance: "",
 			context_depth: 3,
-			parallel_n: 1,
-			api_model: "hidream", // Default for nano-gpt example
-			prompt_template: "Analyze the story context. Describe {{char}}'s current physical appearance, clothing, and expression. \nOutput JSON format only: {\"display_text\": \"Short description...\", \"visual_prompt\": \"Comma separated tags for image generation...\"}",
-			image_endpoint: "https://nano-gpt.com/api/v1/images/generations",
-			use_main_api_for_text: true // If true, uses the Chat Completion endpoint configured in main settings
+			parallel_n: 1, 
+			image_model: "", // For the image generator backend
+			
+			// Director LLM Config
+			director_model: "gpt-3.5-turbo",
+			
+			// The Script
+			prompts_script: ":variables\n{{appearance}}=A generic adventurer.\n\n:Character\nDescribe {{char}}'s current appearance and emotion based on the text context.\nBase Appearance: {{appearance}}\nContext: {{context}}\n\nOutput JSON format: {\"prompts\": [\"visual description for image generator\"]}"
 		},
-		current: {
-			image: "", // Base64 or URL
-			text: "Ready to generate.",
-			prompt_used: ""
-		},
-		previous: null, // For revert
-		session_cache: [], // Stores [{image, prompt}] for the gallery
-		is_generating: false
+		runtime: {
+			parsed_profiles: [],   // {name, template}
+			variables: {},
+			active_profile_index: 0,
+			
+			gallery_queue: [],     // FIFO [{image, prompt, timestamp}]
+			current_display: {     // Active View
+				image: "",
+				text: "Ready."
+			},
+			is_generating: false
+		}
 	};
 
 	function init_avatar_module() {
-		const pillHtml = `
-		<div id="avatar_pill_wrapper" class="hidden" title="Show Avatar Panel" onclick="toggle_avatar_dock(true)">
-			<img id="avatar_pill_img" src="${niko_square}">
-		</div>`;
-		
-		// Convert to node
-		const pillDiv = document.createElement('div');
-		pillDiv.innerHTML = pillHtml;
-		const pillNode = pillDiv.firstElementChild;
+        const pillHtml = `
+        <div id="avatar_pill_wrapper" class="hidden" title="Show Avatar Panel" onclick="toggle_avatar_dock(true)" style="cursor:pointer; margin-right:6px;">
+            <img id="avatar_pill_img" src="${niko_square}" style="width:50px; height:50px; border-radius:50%; border:1px solid var(--theme_color_border); object-fit:cover;">
+        </div>`;
+        
+        const pillDiv = document.createElement('div');
+        pillDiv.innerHTML = pillHtml;
+        const pillNode = pillDiv.firstElementChild;
+        const topMenu = document.getElementById("topmenu");
+        const quickCtx = topMenu.querySelector(".quick-ctx-wrapper");
+        if (quickCtx) topMenu.insertBefore(pillNode, quickCtx);
+        else topMenu.firstElementChild.appendChild(pillNode);
 
-		// INSERT PILL: Find 'topmenu' and insert before 'quick-ctx-wrapper'
-		const topMenu = document.getElementById("topmenu");
-		const quickCtx = topMenu.querySelector(".quick-ctx-wrapper");
-		if (quickCtx) {
-			topMenu.insertBefore(pillNode, quickCtx);
-		} else {
-			// Fallback if quick ctx not found (rare), append to end of internal div
-			topMenu.firstElementChild.appendChild(pillNode);
+        // 2-Row Layout
+        const rowHtml = `
+        <div id="avatar_container_row" class="avatar-row-container hidden">
+            <!-- Col 1: Image -->
+            <div class="avatar-img-container">
+                <img id="avatar_main_img" class="avatar-img-main" src="${niko_square}" onclick="open_avatar_gallery()" title="Click to view Gallery">
+            </div>
+
+            <!-- Col 2: Controls -->
+            <div class="avatar-controls-grid">
+                <div class="avatar-ctrl-row">
+                    <button class="avatar-btn" onclick="generate_dynamic_avatar()" title="Refresh">🔄</button>
+                    <button class="avatar-btn" id="avatar_btn_undo" onclick="revert_avatar()" title="Undo" disabled>↩️</button>
+                    <button class="avatar-btn" onclick="commit_avatar_to_story()" title="Insert to Chat">➕</button>
+                    <button class="avatar-btn" onclick="show_avatar_settings()" title="Settings">⚙️</button>
+                </div>
+                <div class="avatar-ctrl-row">
+                    <button class="avatar-btn" onclick="toggle_avatar_dock(false)" title="Close Panel">▲</button>
+                    <button class="avatar-btn" style="cursor:default;"></button> <!-- Spacer -->
+                    <button class="avatar-btn" onclick="cycle_avatar_profile(-1)" title="Previous Profile">◀</button>
+                    <button class="avatar-btn" onclick="cycle_avatar_profile(1)" title="Next Profile">▶</button>
+                </div>
+            </div>
+
+            <!-- Col 3: Text -->
+            <div class="avatar-text-container" id="avatar_desc_text">
+                <b>Ready.</b>
+            </div>
+        </div>
+
+        <!-- SETTINGS MODAL -->
+        <!-- Added flex column style to nspopup to fix mobile gap -->
+        <div class="popupcontainer flex hidden" id="avatar_settings_modal" style="z-index: 20001;">
+            <div class="popupbg flex"></div>
+            <div class="nspopup flexsize big" style="display: flex; flex-direction: column; max-height: 90vh;">
+                <div class="popuptitlebar">
+                    <div class="popuptitletext">Avatar Settings</div>
+                </div>
+                
+                <!-- Content set to flex-grow to fill available height -->
+                <div class="menutext" style="text-align:left; flex-grow: 1; overflow-y:auto; padding: 10px;">
+                    
+                    <div class="settinglabel">
+                        <div class="justifyleft settingsmall">Module Enabled</div>
+                        <input type="checkbox" id="av_enabled">
+                    </div>
+
+                    <hr>
+                    <h4>Image Generation</h4>
+                    <div class="inlinelabel">
+                        <div class="justifyleft rowitem">Context Depth (Turns)</div>
+                        <input type="number" class="form-control" id="av_context_depth" style="width:60px" min="1" max="20">
+                    </div>
+                    <div class="inlinelabel">
+                        <div class="justifyleft rowitem">Parallel Images (N)</div>
+                        <input type="number" class="form-control" id="av_parallel_n" style="width:60px" min="1" max="4">
+                    </div>
+                     <div class="settinglabel">
+                        <div class="justifyleft settingsmall">Image Model Override</div>
+                        <input type="text" class="form-control" id="av_image_model" placeholder="(Optional) Specific model ID" style="width:100%;">
+                    </div>
+
+                    <hr>
+                    <h4>Director LLM (Prompt Generator)</h4>
+                    <p style="font-size:0.8em; color:grey;">Uses your main API connection (OpenAI/Compatible). Select a model to drive the visual descriptions.</p>
+                    
+                    <div class="settinglabel">
+                        <div class="justifyleft settingsmall">Director Model</div>
+                        <!-- Added 'parallel-override-model-select' class so update_oai_model_list finds it -->
+                        <select class="form-control parallel-override-model-select" id="av_dir_model" style="width:100%; height: 30px;">
+                            <option value="">(Use Main Model)</option>
+                        </select>
+                    </div>
+
+                    <hr>
+                    <h4>Prompt Profiles</h4>
+                    <button class="btn btn-primary" style="width:100%; padding:10px; margin-bottom: 10px;" onclick="show_avatar_script_editor()">Edit Prompt Scripts & Variables</button>
+                    
+                    <div style="font-size:0.8em; color: var(--theme_color_text); border: 1px solid var(--theme_color_border); padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.2);">
+                        <strong>Instructions:</strong><br>
+                        • Use <code>:variables</code> block to define replacements (e.g. <code>{{keys}}=Values</code>).<br>
+                        • Use <code>:ProfileName</code> block to define a prompt mode (e.g. <code>:Character</code>, <code>:Background</code>).<br>
+                        • Variables are usable in profiles via <code>{{key}}</code>.<br>
+                        • Profiles act as System Prompts for the Director LLM.<br>
+                        • <strong>Important:</strong> The Director output MUST be a JSON object: <code>{"prompts": ["description 1", "description 2"]}</code>.
+                    </div>
+                    
+                </div>
+                <div class="popupfooter">
+                    <button class="btn btn-primary" onclick="save_avatar_settings()">Save</button>
+                    <button class="btn btn-primary" onclick="document.getElementById('avatar_settings_modal').classList.add('hidden')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCRIPT EDITOR MODAL (Higher Z-Index) -->
+        <div class="popupcontainer flex hidden" id="avatar_script_modal" style="z-index: 20002;">
+            <div class="popupbg flex"></div>
+            <div class="nspopup flexsize big" style="height:90vh; display: flex; flex-direction: column;">
+                <div class="popuptitlebar">
+                    <div class="popuptitletext">Avatar Prompt Script</div>
+                </div>
+                <textarea id="av_script_editor" class="form-control" style="flex-grow: 1; width:100%; resize:none; font-family:monospace; font-size:12px;" spellcheck="false"></textarea>
+                <div class="popupfooter">
+                    <button class="btn btn-primary" onclick="save_avatar_script()">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- GALLERY MODAL -->
+        <div class="popupcontainer flex hidden" id="avatar_gallery_modal" style="z-index: 20003;">
+            <div class="popupbg flex"></div>
+            <div class="nspopup flexsize big">
+                <div class="popuptitlebar">
+                    <div class="popuptitletext">Avatar Gallery</div>
+                </div>
+                <div class="av-gallery-viewer">
+                    <div class="av-gallery-header">
+                        <button class="btn btn-primary" onclick="gallery_nav(-1)">◀ Prev</button>
+                        <span id="av_gallery_counter">0 / 0</span>
+                        <button class="btn btn-primary" onclick="gallery_nav(1)">Next ▶</button>
+                    </div>
+                    <div class="av-gallery-stage">
+                        <img id="av_gallery_img" class="av-gallery-img">
+                    </div>
+                    <div id="av_gallery_prompt" class="av-gallery-prompt"></div>
+                </div>
+                <div class="popupfooter">
+                    <button class="btn btn-primary" onclick="gallery_set_active()">Set as Active</button>
+                    <button class="btn btn-primary" onclick="document.getElementById('avatar_gallery_modal').classList.add('hidden')">Close</button>
+                </div>
+            </div>
+        </div>
+        `;
+
+        const rowDiv = document.createElement('div');
+        rowDiv.innerHTML = rowHtml;
+        const mainContainer = document.getElementById("maincontainer");
+        mainContainer.insertBefore(rowDiv, topMenu.nextSibling);
+
+        // Parse script immediately on load
+        parse_avatar_script(avatar_state.settings.prompts_script);
+        update_avatar_ui();
+        
+        if (avatar_state.settings.enabled) document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
+    }
+
+	function load_avatar_save_data(data) {
+		if (!data) return;
+
+		// 1. Migration: Handle V1 saves (Convert old fields to V2 script)
+		if (!data.settings.prompts_script && (data.settings.base_appearance || data.settings.prompt_template)) {
+			console.log("Migrating Avatar V1 settings to V2 script...");
+			let oldBase = data.settings.base_appearance || "";
+			let oldTemplate = data.settings.prompt_template || "Describe {{char}}.";
+			
+			data.settings.prompts_script = 
+				`:variables\n{{appearance}}=${oldBase}\n\n` +
+				`:Character\n${oldTemplate}\n` + 
+				`Base Appearance: {{appearance}}\nContext: {{context}}\n\n` +
+				`Output JSON format: {"prompts": ["visual description"]}`;
 		}
 
-		// 3. Create the Expanded Row (To insert BELOW Top Menu)
-		const rowHtml = `
-		<div id="avatar_container_row" class="hidden">
-			<!-- Preview Image -->
-			<div class="avatar-preview-container">
-				<img id="avatar_main_img" class="avatar-img-main" src="${niko_square}" onclick="show_avatar_gallery()" title="Click to view Gallery / Magnify">
-			</div>
-
-			<!-- Controls -->
-			<div class="avatar-controls">
-				<button type="button" class="btn btn-primary avatar-btn" onclick="generate_dynamic_avatar()" title="Refresh Avatar">🔄</button>
-				<button type="button" class="btn btn-primary avatar-btn" id="avatar_btn_revert" onclick="revert_avatar()" title="Revert (Undo)" disabled>↩️</button>
-				<button type="button" class="btn btn-primary avatar-btn" onclick="commit_avatar_to_story()" title="Insert Image into Chat">➕</button>
-				<button type="button" class="btn btn-primary avatar-btn" onclick="show_avatar_settings()" title="Settings">⚙️</button>
-			</div>
-
-			<!-- Text Info -->
-			<div class="avatar-status-box">
-				<div class="avatar-desc-text" id="avatar_desc_text">Ready.</div>
-			</div>
-
-			<!-- Collapse -->
-			<button class="avatar-close-btn" onclick="toggle_avatar_dock(false)" title="Hide Panel">▲</button>
-		</div>
-
-		<!-- Modals (Settings & Gallery) - Appended to body as usual -->
-		<div class="popupcontainer flex hidden" id="avatar_settings_modal">
-			<div class="popupbg flex"></div>
-			<div class="nspopup flexsizevsmall">
-				<div class="popuptitlebar">
-					<div class="popuptitletext">Avatar Visualizer Settings</div>
-				</div>
-				<div class="menutext">
-					<div class="settinglabel">
-						<div class="justifyleft settingsmall">Base Appearance</div>
-						<textarea class="form-control menuinput_multiline" id="av_base_appearance" rows="3" placeholder="e.g. Tall female elf, long blonde hair, green eyes..."></textarea>
-					</div>
-					<div class="settinglabel">
-						<div class="justifyleft settingsmall">Prompt Template (Must ask for JSON)</div>
-						<textarea class="form-control menuinput_multiline" id="av_prompt_template" rows="3"></textarea>
-					</div>
-					<div class="inlinelabel">
-						<div class="justifyleft rowitem">Context Depth (Turns)</div>
-						<input type="number" class="form-control" id="av_context_depth" style="width:60px" min="1" max="20">
-					</div>
-					<div class="inlinelabel">
-						<div class="justifyleft rowitem">Parallel Generations (N)</div>
-						<input type="number" class="form-control" id="av_parallel_n" style="width:60px" min="1" max="4">
-					</div>
-					<div class="inlinelabel">
-						<div class="justifyleft rowitem">Image API Model</div>
-						<input type="text" class="form-control" id="av_api_model" style="width:150px">
-					</div>
-					<div class="settinglabel">
-						<div class="justifyleft settingsmall">Last Raw Prompt Used</div>
-						<textarea class="form-control menuinput_multiline" id="av_last_prompt" rows="2" readonly></textarea>
-					</div>
-				</div>
-				<div class="popupfooter">
-					<button type="button" class="btn btn-primary" onclick="save_avatar_settings()">Save</button>
-					<button type="button" class="btn btn-primary" onclick="document.getElementById('avatar_settings_modal').classList.add('hidden')">Cancel</button>
-				</div>
-			</div>
-		</div>
-
-		<div class="popupcontainer flex hidden" id="avatar_gallery_modal">
-			<div class="popupbg flex"></div>
-			<div class="nspopup flexsize">
-				<div class="popuptitlebar">
-					<div class="popuptitletext">Avatar Gallery</div>
-				</div>
-				<div class="menutext" id="avatar_gallery_grid" class="gallery-grid" style="overflow-y:auto; max-height:60vh;"></div>
-				<div class="popupfooter">
-					<button type="button" class="btn btn-primary" onclick="document.getElementById('avatar_gallery_modal').classList.add('hidden')">Close</button>
-				</div>
-			</div>
-		</div>
-		`;
-
-		const rowDiv = document.createElement('div');
-		rowDiv.innerHTML = rowHtml;
+		// 2. Load Settings
+		// Use Object.assign to ensure new fields (like director_endpoint) exist even if loading an old save
+		avatar_state.settings = Object.assign({}, avatar_state.settings, data.settings);
 		
-		// INSERT ROW: Immediately after #topmenu
-		const mainContainer = document.getElementById("maincontainer");
-		mainContainer.insertBefore(rowDiv, topMenu.nextSibling);
+		// 3. Load Runtime State (Gallery, Current Image)
+		if (data.runtime) {
+			if (data.runtime.current_display) avatar_state.runtime.current_display = data.runtime.current_display;
+			if (data.runtime.gallery_queue) avatar_state.runtime.gallery_queue = data.runtime.gallery_queue;
+		}
 
-		// --- FIX: UNHIDE PILL ON START ---
-		// If the module is enabled in settings (default true), show the pill immediately
-		if (avatar_state.settings.enabled) {
+		// 4. CRITICAL: Re-parse the script to hydrate profiles
+		parse_avatar_script(avatar_state.settings.prompts_script);
+
+		// 5. Update UI
+		update_avatar_ui();
+		
+		// Unhide pill if we have an image loaded
+		if (avatar_state.runtime.current_display.image && avatar_state.settings.enabled) {
 			document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
 		}
+	}
 
+	function get_avatar_save_data() {
+		return {
+			settings: avatar_state.settings,
+			runtime: {
+				// We persist the gallery and current image so the UI doesn't reset on reload
+				current_display: avatar_state.runtime.current_display,
+				gallery_queue: avatar_state.runtime.gallery_queue,
+				// We also persist which profile (e.g. "Character" vs "Background") was active
+				active_profile_index: avatar_state.runtime.active_profile_index
+			}
+		};
+	}
+
+	// --- LOGIC: Parsing ---
+	function parse_avatar_script(text) {
+		let lines = text.split(/\r?\n/);
+		let currentSection = null;
+		let buffer = [];
+		
+		avatar_state.runtime.variables = {};
+		avatar_state.runtime.parsed_profiles = [];
+
+		function commit() {
+			if (!currentSection) return;
+			let content = buffer.join("\n").trim();
+			if (currentSection === "variables") {
+				content.split("\n").forEach(line => {
+					let parts = line.split("=");
+					if (parts.length >= 2) {
+						let key = parts[0].trim();
+						let val = parts.slice(1).join("=").trim();
+						avatar_state.runtime.variables[key] = val;
+					}
+				});
+			} else {
+				avatar_state.runtime.parsed_profiles.push({
+					name: currentSection,
+					template: content
+				});
+			}
+			buffer = [];
+		}
+
+		for (let line of lines) {
+			if (line.trim().startsWith(":")) {
+				commit();
+				currentSection = line.trim().substring(1);
+			} else {
+				if(currentSection) buffer.push(line);
+			}
+		}
+		commit();
+
+		// Fallback if empty
+		if (avatar_state.runtime.parsed_profiles.length === 0) {
+			avatar_state.runtime.parsed_profiles.push({
+				name: "Default",
+				template: "Describe {{char}}.\nOutput JSON: {\"prompts\":[\"description\"]}"
+			});
+		}
+		
+		// Ensure index is valid
+		if(avatar_state.runtime.active_profile_index >= avatar_state.runtime.parsed_profiles.length) {
+			avatar_state.runtime.active_profile_index = 0;
+		}
+	}
+
+	// --- LOGIC: Generation ---
+	const generate_dynamic_avatar = asyncRunner(function* () {
+        if (avatar_state.runtime.is_generating) return;
+        
+        avatar_state.runtime.is_generating = true;
+        const imgMain = document.getElementById("avatar_main_img");
+        imgMain.style.opacity = "0.5";
+        document.getElementById("avatar_desc_text").innerHTML = "<i>Directing...</i>";
+
+        try {
+            // 1. Prepare Prompt
+            let profile = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index];
+            let prompt = profile.template;
+
+            // Variable replacement
+            for (let [key, val] of Object.entries(avatar_state.runtime.variables)) {
+                prompt = prompt.split(key).join(val);
+            }
+
+            // Context replacement
+            let depth = avatar_state.settings.context_depth;
+            let recent_text = gametext_arr.slice(-depth).map(c => c.replace(/\[<\|.*?\|>\]/g, "")).join("\n");
+            let charName = localsettings.chatopponent.split("||$||")[0] || "Character";
+            
+            prompt = prompt.replace(/{{char}}/g, charName);
+            prompt = prompt.replace(/{{user}}/g, localsettings.chatname);
+            prompt = prompt.replace(/{{context}}/g, recent_text);
+
+            // 2. Call Director using MAIN GLOBAL settings
+            let api_url = custom_oai_endpoint || default_oai_base;
+            let api_key = custom_oai_key || dummy_api_key;
+            // Use specific director model if set, otherwise use main model
+            let model   = avatar_state.settings.director_model || custom_oai_model || "gpt-3.5-turbo";
+
+            // Normalize URL
+            if (!api_url.endsWith("/v1")) api_url = api_url.replace(/\/$/, "") + "/v1"; 
+            if (!api_url.includes("/chat/completions")) api_url += "/chat/completions";
+
+            let response = yield fetch(api_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api_key}` },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: "user", content: prompt }],
+                    response_format: { type: "json_object" }
+                })
+            }).then(r => r.json());
+
+            let content = response.choices[0].message.content;
+            let json = JSON.parse(content);
+            let prompts = json.prompts || json.visual_prompts || [];
+            
+            if (prompts.length === 0) throw new Error("No prompts returned in JSON");
+
+            // 3. Parallel Dispatch
+            document.getElementById("avatar_desc_text").innerHTML = `<b>${profile.name}:</b> Generating ${prompts.length} variants...`;
+            
+            // Limit to setting N
+			if (avatar_state.settings.parallel_n > 0) {
+            	prompts = prompts.slice(0, avatar_state.settings.parallel_n);
+			}
+
+            let first_completion = true;
+            
+            prompts.forEach(p => {
+                let old_gen_model = localsettings.generate_images_model;
+                if(avatar_state.settings.image_model) localsettings.generate_images_model = avatar_state.settings.image_model;
+                
+                let imgId = generate_new_image(p, "", false); 
+                
+                localsettings.generate_images_model = old_gen_model;
+                
+                if(image_db[imgId]) {
+                    image_db[imgId].onComplete = (b64) => {
+                        avatar_state.runtime.gallery_queue.unshift({
+                            image: b64,
+                            prompt: p,
+                            timestamp: Date.now()
+                        });
+                        if(avatar_state.runtime.gallery_queue.length > 10) avatar_state.runtime.gallery_queue.pop();
+
+                        if(first_completion) {
+                            first_completion = false;
+                            avatar_state.runtime.previous_state = JSON.parse(JSON.stringify(avatar_state.runtime.current_display));
+                            avatar_state.runtime.current_display = {
+                                image: b64,
+                                text: `<b>${profile.name}:</b> Generated.`
+                            };
+                            update_avatar_ui();
+                            autosave();
+                        }
+                    };
+                }
+            });
+
+        } catch (e) {
+            document.getElementById("avatar_desc_text").innerText = "Error: " + e.message;
+        } finally {
+            imgMain.style.opacity = "1.0";
+            avatar_state.runtime.is_generating = false;
+        }
+    });
+
+	// --- LOGIC: UI Helpers ---
+	function update_avatar_ui() {
+		const img = document.getElementById("avatar_main_img");
+		const pill = document.getElementById("avatar_pill_img");
+		const txt = document.getElementById("avatar_desc_text");
+		const btnUndo = document.getElementById("avatar_btn_undo"); // Get reference
+		
+		let src = avatar_state.runtime.current_display.image || niko_square;
+		if(img) img.src = src;
+		if(pill) pill.src = src;
+		if(txt) txt.innerHTML = avatar_state.runtime.current_display.text;
+		
+		// FIX: Check if button exists before setting property
+		if(btnUndo) btnUndo.disabled = !avatar_state.runtime.previous_state;
+	}
+
+	function toggle_avatar_dock(show) {
+		if(show) {
+			document.getElementById("avatar_pill_wrapper").classList.add("hidden");
+			document.getElementById("avatar_container_row").classList.remove("hidden");
+		} else {
+			document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
+			document.getElementById("avatar_container_row").classList.add("hidden");
+		}
+	}
+
+	function cycle_avatar_profile(dir) {
+		let len = avatar_state.runtime.parsed_profiles.length;
+		if(len === 0) return;
+		
+		avatar_state.runtime.active_profile_index = (avatar_state.runtime.active_profile_index + dir + len) % len;
+		let name = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index].name;
+		
+		// Update text to indicate readiness
+		avatar_state.runtime.current_display.text = `<b>${name}:</b> Ready.`;
 		update_avatar_ui();
 	}
 
-	// --- Avatar Toggling ---
-	function toggle_avatar_dock(expand) {
-		const pill = document.getElementById("avatar_pill_wrapper");
-		const row = document.getElementById("avatar_container_row");
-		
-		if (expand) {
-			pill.classList.add("hidden");
-			row.classList.remove("hidden");
-		} else {
-			pill.classList.remove("hidden");
-			row.classList.add("hidden");
+	function revert_avatar() {
+		if(avatar_state.runtime.previous_state) {
+			avatar_state.runtime.current_display = avatar_state.runtime.previous_state;
+			avatar_state.runtime.previous_state = null;
+			update_avatar_ui();
 		}
 	}
 
-	function update_avatar_ui() {
-		const imgMain = document.getElementById("avatar_main_img");
-		const imgPill = document.getElementById("avatar_pill_img");
-		const textBox = document.getElementById("avatar_desc_text");
-		const revertBtn = document.getElementById("avatar_btn_revert");
-
-		// Update Images
-		let imgSrc = avatar_state.current.image || niko_square;
-		if (imgMain) imgMain.src = imgSrc;
-		if (imgPill) imgPill.src = imgSrc;
-
-		// Update Text
-		if (textBox) textBox.innerText = avatar_state.current.text || "Ready.";
-
-		// Update Revert Button
-		if (revertBtn) revertBtn.disabled = (avatar_state.previous === null);
+	function commit_avatar_to_story() {
+		if(avatar_state.runtime.current_display.image) {
+			self_upload_img(avatar_state.runtime.current_display.image, "avatar_insert.png");
+			render_gametext(true);
+		}
 	}
 
-	// --- Settings Logic ---
-
+	// --- LOGIC: Settings ---
 	function show_avatar_settings() {
-		document.getElementById("av_base_appearance").value = avatar_state.settings.base_appearance;
-		document.getElementById("av_prompt_template").value = avatar_state.settings.prompt_template;
-		document.getElementById("av_context_depth").value = avatar_state.settings.context_depth;
-		document.getElementById("av_parallel_n").value = avatar_state.settings.parallel_n;
-		document.getElementById("av_api_model").value = avatar_state.settings.api_model;
-		document.getElementById("av_last_prompt").value = avatar_state.current.prompt_used;
-		
-		document.getElementById("avatar_settings_modal").classList.remove("hidden");
-	}
+        document.getElementById("av_enabled").checked = avatar_state.settings.enabled;
+        document.getElementById("av_context_depth").value = avatar_state.settings.context_depth;
+        document.getElementById("av_parallel_n").value = avatar_state.settings.parallel_n;
+        document.getElementById("av_image_model").value = avatar_state.settings.image_model;
+        
+        // Populate Director Model Dropdown
+        // We trigger the main function which scans for our class
+        if(cached_oai_model_list_data) {
+            update_oai_model_list(cached_oai_model_list_data);
+        }
+        
+        document.getElementById("av_dir_model").value = avatar_state.settings.director_model;
+        
+        document.getElementById("avatar_settings_modal").classList.remove("hidden");
+    }
 
 	function save_avatar_settings() {
-		avatar_state.settings.base_appearance = document.getElementById("av_base_appearance").value;
-		avatar_state.settings.prompt_template = document.getElementById("av_prompt_template").value;
-		avatar_state.settings.context_depth = parseInt(document.getElementById("av_context_depth").value);
-		avatar_state.settings.parallel_n = parseInt(document.getElementById("av_parallel_n").value);
-		avatar_state.settings.api_model = document.getElementById("av_api_model").value;
-		
-		document.getElementById("avatar_settings_modal").classList.add("hidden");
-		autosave(); // Trigger main app autosave
+        avatar_state.settings.enabled = document.getElementById("av_enabled").checked;
+        avatar_state.settings.context_depth = parseInt(document.getElementById("av_context_depth").value);
+        avatar_state.settings.parallel_n = parseInt(document.getElementById("av_parallel_n").value);
+        avatar_state.settings.image_model = document.getElementById("av_image_model").value;
+        
+        // Only saving the model selection now
+        avatar_state.settings.director_model = document.getElementById("av_dir_model").value;
+        
+        document.getElementById("avatar_settings_modal").classList.add("hidden");
+        
+        if(!avatar_state.settings.enabled) toggle_avatar_dock(false);
+        else document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
+        
+        autosave();
+    }
+
+	function show_avatar_script_editor() {
+		document.getElementById("av_script_editor").value = avatar_state.settings.prompts_script;
+		document.getElementById("avatar_script_modal").classList.remove("hidden");
 	}
 
-	// --- Persistence Integration ---
-	function get_avatar_save_data() {
-		return avatar_state;
+	function save_avatar_script() {
+		avatar_state.settings.prompts_script = document.getElementById("av_script_editor").value;
+		parse_avatar_script(avatar_state.settings.prompts_script);
+		cycle_avatar_profile(0); // Refresh active name
+		document.getElementById("avatar_script_modal").classList.add("hidden");
 	}
 
-	function load_avatar_save_data(data) {
-		if (data) {
-			avatar_state = data;
-			update_avatar_ui();
-			
-			// FIX: Use correct ID 'avatar_pill_wrapper'
-			if(avatar_state.current.image) {
-				let pill = document.getElementById("avatar_pill_wrapper");
-				if(pill) pill.classList.remove("hidden");
-			}
-		}
-	}
-
-	// --- The Core Logic (Sidecar Workflow) ---
-
-	const generate_dynamic_avatar = asyncRunner(function* () {
-		if (avatar_state.is_generating) return;
-		
-		// 0. Setup UI State
-		avatar_state.is_generating = true;
-		const imgMain = document.getElementById("avatar_main_img");
-		imgMain.classList.add("avatar-generating");
-		imgMain.classList.remove("avatar-error");
-		document.getElementById("avatar_desc_text").innerText = "Analyzing story context...";
-
-		// 1. Snapshot for Revert
-		avatar_state.previous = JSON.parse(JSON.stringify(avatar_state.current));
-		update_avatar_ui(); // Updates the revert button state
-
-		try {
-			// 2. Prepare Context for LLM
-			let depth = avatar_state.settings.context_depth;
-			let recent_text = "";
-			let history = gametext_arr.slice(-depth);
-			for(let chunk of history) {
-				// Strip images/audio tags from text to save tokens
-				recent_text += chunk.replace(/\[<\|.*?\|>\]/g, "") + "\n";
-			}
-
-			// 3. Prepare Prompt
-			let charName = localsettings.chatopponent || "the character";
-			if(charName.includes("||$||")) charName = charName.split("||$||")[0]; // Just take first char for now
-
-			let sysPrompt = avatar_state.settings.prompt_template.replace("{{char}}", charName);
-			let userPrompt = `Base Appearance: ${avatar_state.settings.base_appearance}\n\nStory Context:\n${recent_text}`;
-			
-			// 4. Call Text API (Using the existing endpoint configuration if possible)
-			// Note: In a real integration, we'd reuse the `custom_oai_endpoint` variables.
-			// For this snippet, I assume standard OAI-compatible structure.
-			
-			let text_api_url = custom_oai_endpoint || default_oai_base;
-			// Fix standard URL construction if needed
-			if (!text_api_url.endsWith("/chat/completions")) {
-				// Basic heuristic to find the endpoint
-				if(text_api_url.endsWith("/v1")) text_api_url += "/chat/completions";
-				else text_api_url += "/v1/chat/completions";
-			}
-			
-			let apiKey = custom_oai_key || dummy_api_key;
-
-			// Perform fetch
-			let textResponse = yield fetch(text_api_url, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${apiKey}`
-				},
-				body: JSON.stringify({
-					model: custom_oai_model || "gpt-3.5-turbo",
-					messages: [
-						{ role: "system", content: sysPrompt },
-						{ role: "user", content: userPrompt }
-					],
-					temperature: 0.7,
-					response_format: { type: "json_object" } // Force JSON if supported
-				})
-			}).then(r => r.json());
-
-			// 5. Parse Text Result
-			let content = textResponse.choices[0].message.content;
-			let jsonResult;
-			try {
-				jsonResult = JSON.parse(content);
-			} catch (e) {
-				// Fallback regex parsing if JSON mode failed
-				let desc = content.match(/"display_text":\s*"(.*?)"/)?.[1] || "Updated.";
-				let vis = content.match(/"visual_prompt":\s*"(.*?)"/)?.[1] || "";
-				jsonResult = { display_text: desc, visual_prompt: vis };
-			}
-
-			// Update Text UI immediately
-			avatar_state.current.text = jsonResult.display_text;
-			document.getElementById("avatar_desc_text").innerText = jsonResult.display_text;
-			document.getElementById("avatar_desc_text").scrollTop = 0;
-
-			// 6. Construct Image Prompt
-			let finalImagePrompt = `${jsonResult.visual_prompt}`;
-			avatar_state.current.prompt_used = finalImagePrompt; // Save for debugging
-
-			// 7. Call Image API (NanoGPT style)
-			document.getElementById("avatar_desc_text").innerText += "\n[Rendering...]";
-			
-			let imgResponse = yield fetch(avatar_state.settings.image_endpoint, {
-				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${apiKey}`, // Reusing main key, or add specific key field
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					model: avatar_state.settings.api_model,
-					prompt: finalImagePrompt,
-					n: avatar_state.settings.parallel_n,
-					guidance_scale: 3.5,
-					num_inference_steps: 50,
-					size: '1024x1024', // Portrait usually better for avatars
-					response_format: 'b64_json' // Prefer base64 to avoid URL expiry
-				})
-			}).then(r => r.json());
-
-			// 8. Process Image Result
-			avatar_state.session_cache = []; // Clear old cache
-			
-			let dataList = imgResponse.data || []; // Standard OAI format
-			// NanoGPT might return differently, adjust based on actual API response structure
-			// Assuming standard OAI format: { data: [{ b64_json: "..." }, ...] }
-			
-			if (dataList.length > 0) {
-				// Cache all results
-				for(let item of dataList) {
-					let imgStr = item.b64_json;
-					if (!imgStr.startsWith("data:image")) imgStr = "data:image/png;base64," + imgStr;
-					avatar_state.session_cache.push({
-						image: imgStr,
-						prompt: finalImagePrompt
-					});
-				}
-
-				// Set the first one as current
-				avatar_state.current.image = avatar_state.session_cache[0].image;
-				update_avatar_ui();
-			} else {
-				throw new Error("No image data received");
-			}
-
-		} catch (err) {
-			console.error("Avatar Gen Error:", err);
-			document.getElementById("avatar_desc_text").innerText = "Error: " + err.message;
-			imgMain.classList.add("avatar-error");
-		} finally {
-			imgMain.classList.remove("avatar-generating");
-			avatar_state.is_generating = false;
-			autosave();
-		}
-	});
-
-	function revert_avatar() {
-		if (avatar_state.previous) {
-			avatar_state.current = JSON.parse(JSON.stringify(avatar_state.previous));
-			avatar_state.previous = null; // One-time undo
-			update_avatar_ui();
-			autosave();
-		}
-	}
-
-	// --- Commit to Story ---
-	function commit_avatar_to_story() {
-		if (!avatar_state.current.image) return;
-
-		// Use existing KAL function to upload/store image
-		// self_upload_img expects raw data URI.
-		// It pushes to gametext_arr automatically.
-		
-		// We want to add context text? Maybe just the image.
-		// Let's create a wrapper to emulate the file upload process
-		let base64Data = avatar_state.current.image;
-		let filename = `avatar_${Date.now()}.png`;
-		
-		self_upload_img(base64Data, filename);
-		
-		// Trigger render
-		render_gametext(true);
-		
-		// Visual feedback
-		showToast("Avatar inserted into chat!");
-	}
-
-	// --- Gallery Logic ---
-	function show_avatar_gallery() {
-		const grid = document.getElementById("avatar_gallery_grid");
-		grid.innerHTML = "";
-
-		if (avatar_state.session_cache.length === 0) {
-			// If empty, just show current image
-			if(avatar_state.current.image) {
-				let div = document.createElement("div");
-				div.className = "gallery-item";
-				div.innerHTML = `<img src="${avatar_state.current.image}" title="Current Image">`;
-				grid.appendChild(div);
-			} else {
-				grid.innerHTML = "<p style='padding:20px'>No images generated yet.</p>";
-			}
-		} else {
-			avatar_state.session_cache.forEach((item, index) => {
-				let div = document.createElement("div");
-				div.className = "gallery-item";
-				// Highlight if it matches current
-				if (item.image === avatar_state.current.image) {
-					div.style.borderColor = "#00ff00";
-				}
-				
-				div.innerHTML = `<img src="${item.image}">`;
-				div.onclick = function() {
-					// Set as current active avatar
-					avatar_state.current.image = item.image;
-					update_avatar_ui();
-					// We keep modal open or close? Usually closing is better feedback.
-					document.getElementById("avatar_gallery_modal").classList.add("hidden");
-				};
-				grid.appendChild(div);
-			});
-		}
-
+	// --- LOGIC: Gallery ---
+	let gallery_index = 0;
+	function open_avatar_gallery() {
+		if(avatar_state.runtime.gallery_queue.length === 0) return;
+		gallery_index = 0;
+		update_gallery_view();
 		document.getElementById("avatar_gallery_modal").classList.remove("hidden");
+	}
+
+	function gallery_nav(dir) {
+		let len = avatar_state.runtime.gallery_queue.length;
+		if(len === 0) return;
+		gallery_index = (gallery_index + dir + len) % len;
+		update_gallery_view();
+	}
+
+	function update_gallery_view() {
+		let len = avatar_state.runtime.gallery_queue.length;
+		if(len === 0) return;
+		let item = avatar_state.runtime.gallery_queue[gallery_index];
+		
+		document.getElementById("av_gallery_counter").innerText = `${gallery_index + 1} / ${len}`;
+		document.getElementById("av_gallery_img").src = item.image;
+		document.getElementById("av_gallery_prompt").innerText = item.prompt;
+	}
+
+	function gallery_set_active() {
+		if(avatar_state.runtime.gallery_queue.length > 0) {
+			let item = avatar_state.runtime.gallery_queue[gallery_index];
+			avatar_state.runtime.previous_state = JSON.parse(JSON.stringify(avatar_state.runtime.current_display));
+			avatar_state.runtime.current_display = {
+				image: item.image,
+				text: "Selected from Gallery."
+			};
+			update_avatar_ui();
+			document.getElementById("avatar_gallery_modal").classList.add("hidden");
+		}
 	}
 
 	//saving and loading functionality
@@ -8965,6 +9114,7 @@ Current version indicated by LITEVER below.
 				compressImage(origImg, (newDataUri) => {
 					image_db[imgid].done = true;
 					image_db[imgid].result = newDataUri;
+					if(image_db[imgid].onComplete) image_db[imgid].onComplete(newDataUri);
 				}, false, imgres);
 			};
 			reader.readAsDataURL(finalimg);
@@ -20918,6 +21068,7 @@ Current version indicated by LITEVER below.
 						compressImage(origImg, (newDataUri) => {
 							image_db[imgid].done = true;
 							image_db[imgid].result = newDataUri;
+							if(image_db[imgid].onComplete) image_db[imgid].onComplete(newDataUri);
 						}, true, imgres);
 					}else{
 						image_db[imgid].queue = "Failed";
@@ -21960,6 +22111,7 @@ Current version indicated by LITEVER below.
 											let imgres = localsettings.img_allowhd ? (localsettings.img_aspect == 0 ? NO_HD_RES_PX : HD_RES_PX) : NO_HD_RES_PX;
 											compressImage(origImg, (newDataUri) => {
 												img.result = newDataUri;
+												if(img.onComplete) img.onComplete(img.result);
 											}, false, imgres);
 										}
 									})
@@ -22014,6 +22166,7 @@ Current version indicated by LITEVER below.
 									let imgres = localsettings.img_allowhd?(localsettings.img_aspect==0?NO_HD_RES_PX:HD_RES_PX):NO_HD_RES_PX;
 									compressImage(origImg, (newDataUri) => {
 										img.result = newDataUri;
+										if(img.onComplete) img.onComplete(img.result);
 									}, false, imgres);
 								};
 								reader.readAsDataURL(finalimg);
