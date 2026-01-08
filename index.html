@@ -6323,7 +6323,9 @@ Current version indicated by LITEVER below.
 		
 		// Unhide pill if we have an image loaded
 		if (avatar_state.runtime.current_display.image && avatar_state.settings.enabled) {
-			document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
+			if (document.getElementById("avatar_pill_wrapper")) {
+				document.getElementById("avatar_pill_wrapper").classList.remove("hidden");
+			}
 		}
 	}
 
