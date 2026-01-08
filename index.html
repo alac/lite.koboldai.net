@@ -2796,11 +2796,15 @@ Current version indicated by LITEVER below.
     .avatar-btn:hover { background-color: #ffffff22; }
     .avatar-text-container {
         flex-grow: 1;
-        padding: 6px;
+        padding: 4px 8px; /* Slightly tighter padding */
         font-size: 0.8em;
         overflow-y: auto;
         color: var(--theme_color_text);
-        line-height: 1.2;
+        line-height: 1.3; /* Better spacing for multi-line */
+        display: flex;
+        flex-direction: column;
+        justify-content: center; /* Center vertically if only 1 line, top if 2 */
+        white-space: pre-wrap; /* Preserve newlines */
     }
     /* Gallery Styles */
     .av-gallery-viewer {
@@ -2835,6 +2839,7 @@ Current version indicated by LITEVER below.
         height: 100px;
         padding: 10px;
         background: var(--theme_color_input_bg);
+		color:  var(--theme_color_text);
         border-top: 1px solid var(--theme_color_border);
         font-size: 0.8em;
         overflow-y: auto;
@@ -6127,6 +6132,7 @@ Current version indicated by LITEVER below.
 			is_generating: false
 		}
 	};
+	var avatar_generation_timer = null;
 
 	function init_avatar_module() {
         const pillHtml = `
@@ -6318,9 +6324,18 @@ Current version indicated by LITEVER below.
 		// 4. CRITICAL: Re-parse the script to hydrate profiles
 		parse_avatar_script(avatar_state.settings.prompts_script);
 
+		// Ensure the text display is clean on load
+		if (avatar_state.runtime.current_display) {
+			// If we loaded a save where it was generating, reset to Ready
+			if (avatar_state.runtime.current_display.text && avatar_state.runtime.current_display.text.includes("Generating")) {
+				set_avatar_status("Ready.");
+			}
+			// If it was "Done", we keep it!
+		}
+
 		// 5. Update UI
 		update_avatar_ui();
-		
+
 		// Unhide pill if we have an image loaded
 		if (avatar_state.runtime.current_display.image && avatar_state.settings.enabled) {
 			if (document.getElementById("avatar_pill_wrapper")) {
@@ -6398,106 +6413,146 @@ Current version indicated by LITEVER below.
 
 	// --- LOGIC: Generation ---
 	const generate_dynamic_avatar = asyncRunner(function* () {
-        if (avatar_state.runtime.is_generating) return;
-        
-        avatar_state.runtime.is_generating = true;
-        const imgMain = document.getElementById("avatar_main_img");
-        imgMain.style.opacity = "0.5";
-        document.getElementById("avatar_desc_text").innerHTML = "<i>Directing...</i>";
+		if (avatar_state.runtime.is_generating) return;
+		
+		// --- SETUP START ---
+		avatar_state.runtime.is_generating = true;
+		const imgMain = document.getElementById("avatar_main_img");
+		if(imgMain) imgMain.style.opacity = "0.5";
+		
+		// Initialize Counters
+		let startTime = Date.now();
+		let totalRequests = 0; // Will be set after Director returns
+		let doneCount = 0;
+		
+		// Clear existing timer if any
+		if (avatar_generation_timer) clearInterval(avatar_generation_timer);
 
-        try {
-            // 1. Prepare Prompt
-            let profile = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index];
-            let prompt = profile.template;
+		// START TIMER LOOP
+		// This updates the UI every second while processing
+		avatar_generation_timer = setInterval(() => {
+			let elapsed = Math.floor((Date.now() - startTime) / 1000);
+			let countStr = totalRequests > 0 ? `(${doneCount}/${totalRequests})` : "(...)";
+			set_avatar_status(`Generating... ${elapsed}s ${countStr}`);
+		}, 1000);
+		
+		// Initial State
+		set_avatar_status("Directing...");
+		// --- SETUP END ---
 
-            // Variable replacement
-            for (let [key, val] of Object.entries(avatar_state.runtime.variables)) {
-                prompt = prompt.split(key).join(val);
-            }
-
-            // Context replacement
-            let depth = avatar_state.settings.context_depth;
-            let recent_text = gametext_arr.slice(-depth).map(c => c.replace(/\[<\|.*?\|>\]/g, "")).join("\n");
-            let charName = localsettings.chatopponent.split("||$||")[0] || "Character";
-            
-            prompt = prompt.replace(/{{char}}/g, charName);
-            prompt = prompt.replace(/{{user}}/g, localsettings.chatname);
-            prompt = prompt.replace(/{{context}}/g, recent_text);
-
-            // 2. Call Director using MAIN GLOBAL settings
-            let api_url = custom_oai_endpoint || default_oai_base;
-            let api_key = custom_oai_key || dummy_api_key;
-            // Use specific director model if set, otherwise use main model
-            let model   = avatar_state.settings.director_model || custom_oai_model || "gpt-3.5-turbo";
-
-            // Normalize URL
-            if (!api_url.endsWith("/v1")) api_url = api_url.replace(/\/$/, "") + "/v1"; 
-            if (!api_url.includes("/chat/completions")) api_url += "/chat/completions";
-
-            let response = yield fetch(api_url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api_key}` },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [{ role: "user", content: prompt }],
-                    response_format: { type: "json_object" }
-                })
-            }).then(r => r.json());
-
-            let content = response.choices[0].message.content;
-            let json = JSON.parse(content);
-            let prompts = json.prompts || json.visual_prompts || [];
-            
-            if (prompts.length === 0) throw new Error("No prompts returned in JSON");
-
-            // 3. Parallel Dispatch
-            document.getElementById("avatar_desc_text").innerHTML = `<b>${profile.name}:</b> Generating ${prompts.length} variants...`;
-            
-            // Limit to setting N
-			if (avatar_state.settings.parallel_n > 0) {
-            	prompts = prompts.slice(0, avatar_state.settings.parallel_n);
+		try {
+			// 1. Prepare Prompt (No changes here)
+			let profile = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index];
+			let prompt = profile.template;
+			for (let [key, val] of Object.entries(avatar_state.runtime.variables)) {
+				prompt = prompt.split(key).join(val);
 			}
+			let depth = avatar_state.settings.context_depth;
+			let recent_text = gametext_arr.slice(-depth).map(c => c.replace(/\[<\|.*?\|>\]/g, "")).join("\n");
+			let charName = localsettings.chatopponent.split("||$||")[0] || "Character";
+			prompt = prompt.replace(/{{char}}/g, charName);
+			prompt = prompt.replace(/{{user}}/g, localsettings.chatname);
+			prompt = prompt.replace(/{{context}}/g, recent_text);
 
-            let first_completion = true;
-            
-            prompts.forEach(p => {
-                let old_gen_model = localsettings.generate_images_model;
-                localsettings.generate_images_model = avatar_state.settings.image_model;
-                
-                let imgId = generate_new_image(p, "", false); 
-                
-                localsettings.generate_images_model = old_gen_model;
-                
-                if(image_db[imgId]) {
-                    image_db[imgId].onComplete = (b64) => {
-                        avatar_state.runtime.gallery_queue.unshift({
-                            image: b64,
-                            prompt: p,
-                            timestamp: Date.now()
-                        });
-                        if(avatar_state.runtime.gallery_queue.length > 10) avatar_state.runtime.gallery_queue.pop();
+			// 2. Call Director (No changes here)
+			let api_url = custom_oai_endpoint || default_oai_base;
+			let api_key = custom_oai_key || dummy_api_key;
+			let model   = avatar_state.settings.director_model || custom_oai_model || "gpt-3.5-turbo";
+			if (!api_url.endsWith("/v1")) api_url = api_url.replace(/\/$/, "") + "/v1"; 
+			if (!api_url.includes("/chat/completions")) api_url += "/chat/completions";
 
-                        if(first_completion) {
-                            first_completion = false;
-                            avatar_state.runtime.previous_state = JSON.parse(JSON.stringify(avatar_state.runtime.current_display));
-                            avatar_state.runtime.current_display = {
-                                image: b64,
-                                text: `<b>${profile.name}:</b> Generated.`
-                            };
-                            update_avatar_ui();
-                            autosave();
-                        }
-                    };
-                }
-            });
+			let response = yield fetch(api_url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api_key}` },
+				body: JSON.stringify({
+					model: model,
+					messages: [{ role: "user", content: prompt }],
+					response_format: { type: "json_object" }
+				})
+			}).then(r => r.json());
 
-        } catch (e) {
-            document.getElementById("avatar_desc_text").innerText = "Error: " + e.message;
-        } finally {
-            imgMain.style.opacity = "1.0";
-            avatar_state.runtime.is_generating = false;
-        }
-    });
+			let content = response.choices[0].message.content;
+			let json = JSON.parse(content);
+			let prompts = json.prompts || json.visual_prompts || [];
+			
+			if (prompts.length === 0) throw new Error("No prompts returned in JSON");
+
+			// 3. Parallel Dispatch
+			// Limit to setting N
+			if (avatar_state.settings.parallel_n > 0) {
+				prompts = prompts.slice(0, avatar_state.settings.parallel_n);
+			}
+			
+			totalRequests = prompts.length; // Set total for the timer loop
+			
+			// Immediate update before images start
+			set_avatar_status(`Generating... ${Math.floor((Date.now() - startTime)/1000)}s (0/${totalRequests})`);
+
+			let first_completion = true;
+			let completed_prompts = 0; // Local tracker for this batch
+
+			prompts.forEach(p => {
+				let old_gen_model = localsettings.generate_images_model;
+				localsettings.generate_images_model = avatar_state.settings.image_model;
+				
+				// Generate
+				let imgId = generate_new_image(p, "", false); 
+				
+				localsettings.generate_images_model = old_gen_model;
+				
+				if(image_db[imgId]) {
+					image_db[imgId].onComplete = (b64) => {
+						// Update State
+						doneCount++; 
+						
+						// Add to gallery
+						avatar_state.runtime.gallery_queue.unshift({
+							image: b64,
+							prompt: p,
+							timestamp: Date.now()
+						});
+						if(avatar_state.runtime.gallery_queue.length > 10) avatar_state.runtime.gallery_queue.pop();
+
+						// UI Updates
+						if(first_completion) {
+							first_completion = false;
+							avatar_state.runtime.previous_state = JSON.parse(JSON.stringify(avatar_state.runtime.current_display));
+							// We update the image property of current_display, but we DO NOT touch the text property here.
+							// The text property is managed by set_avatar_status.
+							avatar_state.runtime.current_display.image = b64;
+							update_avatar_ui(); // This refreshes the image
+							autosave();
+						}
+
+						// CHECK FOR FINAL COMPLETION
+						if (doneCount >= totalRequests) {
+							clearInterval(avatar_generation_timer);
+							let totalTime = Math.floor((Date.now() - startTime) / 1000);
+							
+							// Set the final "Done" message (Persistent)
+							let timeStr = totalTime + "s";
+							if(totalTime > 60) timeStr = Math.floor(totalTime/60) + "m " + (totalTime%60) + "s";
+							
+							set_avatar_status(`Done (${doneCount}/${totalRequests}) in ${timeStr}.`);
+							
+							if(imgMain) imgMain.style.opacity = "1.0";
+							avatar_state.runtime.is_generating = false;
+						}
+					};
+				} else {
+					// Handle immediate failure (e.g. validatoin error in generate_new_image)
+					// We treat it as "done" for the counter so the bar finishes
+					doneCount++;
+				}
+			});
+
+		} catch (e) {
+			clearInterval(avatar_generation_timer);
+			set_avatar_status("Error: " + e.message);
+			if(imgMain) imgMain.style.opacity = "1.0";
+			avatar_state.runtime.is_generating = false;
+		}
+	});
 
 	// --- LOGIC: UI Helpers ---
 	function update_avatar_ui() {
@@ -6525,16 +6580,34 @@ Current version indicated by LITEVER below.
 		}
 	}
 
+	function set_avatar_status(message) {
+		let profileName = "Default";
+		if (avatar_state.runtime.parsed_profiles && avatar_state.runtime.parsed_profiles.length > 0) {
+			profileName = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index].name;
+		}
+		
+		// Construct the HTML
+		let html = `Profile: <b>${escape_html(profileName)}</b>\nStatus: ${message}`;
+		
+		// Save to runtime state so it persists if we hide/show the dock
+		avatar_state.runtime.current_display.text = html;
+		
+		// Update DOM immediately if visible
+		let txtEl = document.getElementById("avatar_desc_text");
+		if (txtEl) txtEl.innerHTML = html; // innerHTML allows the <b> tag
+	}
+
 	function cycle_avatar_profile(dir) {
 		let len = avatar_state.runtime.parsed_profiles.length;
 		if(len === 0) return;
-		
+
+		// Stop any running timer if the user switches profiles mid-generation (optional, but cleaner)
+		if (avatar_generation_timer) clearInterval(avatar_generation_timer);
 		avatar_state.runtime.active_profile_index = (avatar_state.runtime.active_profile_index + dir + len) % len;
-		let name = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index].name;
-		
-		// Update text to indicate readiness
-		avatar_state.runtime.current_display.text = `<b>${name}:</b> Ready.`;
-		update_avatar_ui();
+
+		// Update to "Ready" state per requirements
+		set_avatar_status("Ready.");
+		update_avatar_ui(); // Refreshes image/pill
 	}
 
 	function revert_avatar() {
