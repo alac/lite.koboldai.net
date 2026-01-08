@@ -6440,6 +6440,23 @@ Current version indicated by LITEVER below.
 		set_avatar_status("Directing...");
 		// --- SETUP END ---
 
+		// Helper to check if we are finished and unlock the UI
+		const check_completion = () => {
+			if (doneCount >= totalRequests) {
+				clearInterval(avatar_generation_timer);
+				let totalTime = Math.floor((Date.now() - startTime) / 1000);
+				
+				// Set the final "Done" message (Persistent)
+				let timeStr = totalTime + "s";
+				if(totalTime > 60) timeStr = Math.floor(totalTime/60) + "m " + (totalTime%60) + "s";
+				
+				set_avatar_status(`Done (${doneCount}/${totalRequests}) in ${timeStr}.`);
+				
+				if(imgMain) imgMain.style.opacity = "1.0";
+				avatar_state.runtime.is_generating = false; // <--- The critical unlock
+			}
+		};
+
 		try {
 			// 1. Prepare Prompt (No changes here)
 			let profile = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index];
@@ -6525,24 +6542,13 @@ Current version indicated by LITEVER below.
 						}
 
 						// CHECK FOR FINAL COMPLETION
-						if (doneCount >= totalRequests) {
-							clearInterval(avatar_generation_timer);
-							let totalTime = Math.floor((Date.now() - startTime) / 1000);
-							
-							// Set the final "Done" message (Persistent)
-							let timeStr = totalTime + "s";
-							if(totalTime > 60) timeStr = Math.floor(totalTime/60) + "m " + (totalTime%60) + "s";
-							
-							set_avatar_status(`Done (${doneCount}/${totalRequests}) in ${timeStr}.`);
-							
-							if(imgMain) imgMain.style.opacity = "1.0";
-							avatar_state.runtime.is_generating = false;
-						}
+						check_completion();
 					};
 				} else {
-					// Handle immediate failure (e.g. validatoin error in generate_new_image)
+					// Handle immediate failure (e.g. validation error in generate_new_image)
 					// We treat it as "done" for the counter so the bar finishes
 					doneCount++;
+					check_completion(); // <--- FIX ADDED HERE
 				}
 			});
 
