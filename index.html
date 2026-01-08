@@ -6626,10 +6626,11 @@ Current version indicated by LITEVER below.
 	function gallery_set_active() {
 		if(avatar_state.runtime.gallery_queue.length > 0) {
 			let item = avatar_state.runtime.gallery_queue[gallery_index];
+			let name = avatar_state.runtime.parsed_profiles[avatar_state.runtime.active_profile_index].name;
 			avatar_state.runtime.previous_state = JSON.parse(JSON.stringify(avatar_state.runtime.current_display));
 			avatar_state.runtime.current_display = {
 				image: item.image,
-				text: "Selected from Gallery."
+				text: "<b>${name}:</b> Selected from Gallery."
 			};
 			update_avatar_ui();
 			document.getElementById("avatar_gallery_modal").classList.add("hidden");
