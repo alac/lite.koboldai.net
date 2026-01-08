@@ -6460,7 +6460,7 @@ Current version indicated by LITEVER below.
             
             prompts.forEach(p => {
                 let old_gen_model = localsettings.generate_images_model;
-                if(avatar_state.settings.image_model) localsettings.generate_images_model = avatar_state.settings.image_model;
+                localsettings.generate_images_model = avatar_state.settings.image_model;
                 
                 let imgId = generate_new_image(p, "", false); 
                 
