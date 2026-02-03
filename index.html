@@ -7833,9 +7833,16 @@ Current version indicated by LITEVER below.
 		})
 		.catch((error) => {
 			console.error('Error:', error);
-			clear_poll_flags();
-			render_gametext();
-			msgbox("Error while submitting prompt: " + error);
+			if (parallel_draft_data) {
+				active_requests_count--;
+				if (active_requests_count <= 0) {
+					poll_pending_response();
+				}
+			} else {
+				clear_poll_flags();
+				render_gametext();
+				msgbox("Error while submitting prompt: " + error);
+			}
 		});
 	}
 
