@@ -7860,7 +7860,7 @@ Current version indicated by LITEVER below.
 			headers: submit_headers,
 			body: JSON.stringify(submit_payload)
 		};
-		if (globalabortcontroller && !parallel_draft_data) {
+		if (globalabortcontroller) {
 			reqOpt.signal = globalabortcontroller.signal;
 		}
 		let cached_stop_seq = get_stop_sequences();
@@ -8055,8 +8055,13 @@ Current version indicated by LITEVER below.
 	function handle_stream_error(error, slot_idx) {
 		console.error('Stream Error:', error);
 		if (parallel_draft_data) {
+	        request_slots[slot_idx].status = "done"
 			active_requests_count--;
 			if (active_requests_count > 0) return;
+			if (active_requests_count == 0) {
+				finalize_parallel_batch([]);
+				return;
+			}
 		}
 		if (error.name !== "AbortError") {
 			flush_streaming_text();
