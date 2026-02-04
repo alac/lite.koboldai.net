@@ -7869,6 +7869,9 @@ Current version indicated by LITEVER below.
 		.then(x => {
 			if (x.ok) { return x; } 
 			else {
+				if (parallel_draft_data) {
+					return x;
+				}
 				return x.text().then(errdat => {
 					throw new Error('Error while SSE streaming: ' + errdat);
 				}).catch(err => {
@@ -8051,16 +8054,15 @@ Current version indicated by LITEVER below.
 
 	function handle_stream_error(error, slot_idx) {
 		console.error('Stream Error:', error);
+		if (parallel_draft_data) {
+			active_requests_count--;
+			if (active_requests_count > 0) return;
+		}
 		if (error.name !== "AbortError") {
 			flush_streaming_text();
 			msgbox("Error while submitting prompt: " + error);
 		}
-		if (parallel_draft_data) {
-			active_requests_count--;
-			if (active_requests_count <= 0) clear_poll_flags();
-		} else {
-			clear_poll_flags();
-		}
+		clear_poll_flags();
 		render_gametext();
 	}
 
