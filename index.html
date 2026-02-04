@@ -7860,7 +7860,7 @@ Current version indicated by LITEVER below.
 			headers: submit_headers,
 			body: JSON.stringify(submit_payload)
 		};
-		if (globalabortcontroller) {
+		if (globalabortcontroller && !parallel_draft_data) {
 			reqOpt.signal = globalabortcontroller.signal;
 		}
 		let cached_stop_seq = get_stop_sequences();
