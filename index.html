@@ -12965,10 +12965,10 @@ Current version indicated by LITEVER below.
 				if (gametext_arr[i].includes(fix.new_text)) found_new = true;
 			}
 
-			if (found_old) {
-				statusHtml = `<button type="button" class="btn btn-primary bg_green" onclick="apply_single_fix(${idx})">Apply Fix</button>`;
-			} else if (found_new) {
+			if (found_new) {
 				statusHtml = `<div class="fix-status status-applied">Applied / Present</div>`;
+			} else if (found_old) {
+				statusHtml = `<button type="button" class="btn btn-primary bg_green" onclick="apply_single_fix(${idx})">Apply Fix</button>`;
 			} else {
 				statusHtml = `<div class="fix-status status-missing">Context Not Found</div>`;
 			}
