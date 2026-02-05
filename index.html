@@ -12951,7 +12951,6 @@ Current version indicated by LITEVER below.
 		let html = "";
 		
 		detected_fixes_cache.forEach((fix, idx) => {
-			// Apply Filter
 			if (filterVal !== "" && fix.source_label !== filterVal) return;
 
 			let statusHtml = "";
@@ -12973,19 +12972,24 @@ Current version indicated by LITEVER below.
 				statusHtml = `<div class="fix-status status-missing">Context Not Found</div>`;
 			}
 
-			// Calculate diffs for display
 			let diffRes = get_diff_html_split(fix.old_text, fix.new_text);
 			
-			// Format Label
-			let sourceBadge = fix.source_label ? `<span style="color: var(--theme_color_highlight); margin-left: 10px; font-size: 0.9em;">[${escape_html(fix.source_label)}]</span>` : "";
+			// Update: Styled to match "Suggestion #" (Bold, text color) but with slight transparency to distinguish
+			let sourceBadge = fix.source_label ? `<span style="font-weight:bold; color: var(--theme_color_text); margin-left: 8px; opacity: 0.9;">[${escape_html(fix.source_label)}]</span>` : "";
 
 			html += `
 			<div class="fix-entry">
-				<div class="fix-header">
+				<!-- Row 1: Title and Source (Left aligned) -->
+				<div class="fix-header" style="justify-content: flex-start; border-bottom: none; padding-bottom: 0; margin-bottom: 2px;">
 					<span style="font-weight:bold;">Suggestion #${idx + 1}</span>
 					${sourceBadge}
-					<span class="fix-reason">${escape_html(fix.reason)}</span>
 				</div>
+				
+				<!-- Row 2: Reasoning (Full width) -->
+				<div class="fix-reason" style="margin-bottom: 8px; display: block; border-bottom: 1px dashed var(--theme_color_border); padding-bottom: 4px;">
+					${escape_html(fix.reason)}
+				</div>
+
 				<div class="fix-diff-grid">
 					<div class="fix-block fix-old">${diffRes.oldHtml}</div>
 					<div class="fix-block fix-new">${diffRes.newHtml}</div>
