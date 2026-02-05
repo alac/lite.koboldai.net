@@ -12858,19 +12858,34 @@ Current version indicated by LITEVER below.
 		detected_fixes_cache = [];
 		apply_edits_source_idx = -1;
 		
+		let source_labels_found = new Set(); // Track unique sources for the filter
+
 		// 1. Collect fixes and identify source index
-		// We explicitly track where the fixes came from to avoid "Self-Cannibalization"
-		// (replacing text inside the suggestion block itself) or false positives in the status check.
 		if (parallel_draft_data && parallel_draft_data.versions) {
 			apply_edits_source_idx = parallel_draft_data.target_idx;
 			for (let i = 0; i < parallel_draft_data.versions.length; i++) {
+				// Generate Label
+				let full_model = parallel_draft_data.models[i] || "Unknown";
+				let short_model = full_model.split('/').pop();
+				let label = `V${i+1} | ${short_model}`;
+				source_labels_found.add(label);
+
 				let drafts_fixes = extract_fixes_from_text(parallel_draft_data.versions[i]);
+				
+				// Attach source metadata to each fix
+				drafts_fixes.forEach(fix => fix.source_label = label);
+
 				detected_fixes_cache = detected_fixes_cache.concat(drafts_fixes);
 			}
 		} else if (gametext_arr.length > 0) {
 			apply_edits_source_idx = gametext_arr.length - 1;
 			let last_msg = gametext_arr[apply_edits_source_idx];
-			detected_fixes_cache = detected_fixes_cache.concat(extract_fixes_from_text(last_msg));
+			let fixes = extract_fixes_from_text(last_msg);
+			
+			// Attach fallback metadata
+			fixes.forEach(fix => fix.source_label = "History");
+			
+			detected_fixes_cache = detected_fixes_cache.concat(fixes);
 		}
 		
 		if (detected_fixes_cache.length === 0) {
@@ -12878,12 +12893,26 @@ Current version indicated by LITEVER below.
 			return;
 		}
 
+		// Populate Filter Dropdown
+		const filterSelect = document.getElementById("apply_edits_filter");
+		if(filterSelect) {
+			// Clear existing
+			filterSelect.innerHTML = '<option value="">All Versions</option>';
+			// Add found sources (sorted naturally by V1, V2 etc due to loop order)
+			source_labels_found.forEach(label => {
+				let opt = document.createElement("option");
+				opt.value = label;
+				opt.innerText = label;
+				filterSelect.appendChild(opt);
+			});
+			filterSelect.value = ""; // Reset selection
+		}
+
 		// 2. Perform Sorting HERE (Once) to prevent Jitter on refresh
 		let history_indices = [];
 		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
 		
 		for (let i = start_idx; i < gametext_arr.length; i++) {
-			// CRITICAL: Do not scan the message that provided the suggestions for sorting context
 			if (i === apply_edits_source_idx) continue;
 			
 			history_indices.push({
@@ -12894,7 +12923,6 @@ Current version indicated by LITEVER below.
 
 		detected_fixes_cache.forEach(fix => {
 			fix.sort_score = Infinity;
-			// Scan chunks in reverse order (newest first)
 			for (let i = history_indices.length - 1; i >= 0; i--) {
 				let h = history_indices[i];
 				let pos = h.text.indexOf(fix.old_text);
@@ -12905,7 +12933,6 @@ Current version indicated by LITEVER below.
 			}
 		});
 
-		// Sort found items first, in order of appearance
 		detected_fixes_cache.sort((a, b) => a.sort_score - b.sort_score);
 
 		render_apply_edits_modal();
@@ -12918,16 +12945,19 @@ Current version indicated by LITEVER below.
 		const listContainer = document.getElementById("apply_edits_list");
 		listContainer.innerHTML = "";
 
+		const filterVal = document.getElementById("apply_edits_filter").value;
 		let start_idx = Math.max(0, gametext_arr.length - FIX_LOOKBACK_LIMIT);
 
 		let html = "";
 		
 		detected_fixes_cache.forEach((fix, idx) => {
+			// Apply Filter
+			if (filterVal !== "" && fix.source_label !== filterVal) return;
+
 			let statusHtml = "";
 			let found_old = false;
 			let found_new = false;
 			
-			// CRITICAL: Scan history for status, excluding the suggestion source message
 			for (let i = start_idx; i < gametext_arr.length; i++) {
 				if (i === apply_edits_source_idx) continue;
 				
@@ -12945,10 +12975,15 @@ Current version indicated by LITEVER below.
 
 			// Calculate diffs for display
 			let diffRes = get_diff_html_split(fix.old_text, fix.new_text);
+			
+			// Format Label
+			let sourceBadge = fix.source_label ? `<span style="color: var(--theme_color_highlight); margin-left: 10px; font-size: 0.9em;">[${escape_html(fix.source_label)}]</span>` : "";
+
 			html += `
 			<div class="fix-entry">
 				<div class="fix-header">
 					<span style="font-weight:bold;">Suggestion #${idx + 1}</span>
+					${sourceBadge}
 					<span class="fix-reason">${escape_html(fix.reason)}</span>
 				</div>
 				<div class="fix-diff-grid">
@@ -30786,6 +30821,11 @@ Current version indicated by LITEVER below.
 		<div class="nspopup flexsize big">
 			<div class="popuptitlebar flex">
 				<div class="popuptitletext">Review & Apply Fixes</div>
+				<!-- START CHANGE -->
+				<select id="apply_edits_filter" class="form-control" style="width: auto; height: 26px; padding: 2px; margin-right: 10px; font-size: 12px; max-width: 200px;" onchange="render_apply_edits_modal()">
+					<option value="">All Versions</option>
+				</select>
+				<!-- END CHANGE -->
 				<button type="button" class="btn btn-primary flex-push-right" onclick="close_apply_edits()">Close</button>
 			</div>
 			
