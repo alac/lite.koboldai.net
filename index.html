@@ -13078,7 +13078,9 @@ Current version indicated by LITEVER below.
 		if (active_requests_count <= 0) {
 			let target = parallel_draft_data.target_idx;
 			if (gametext_arr[target] !== undefined) {
-				gametext_arr[target] = parallel_draft_data.versions[new_idx] || "[EMPTY RESPONSE]";
+				let raw = parallel_draft_data.versions[new_idx] || "";
+				let wrapped = (parallel_draft_data.prefix || "") + raw + (parallel_draft_data.suffix || "");
+				gametext_arr[target] = wrapped;
 			}
 		}
 		// Otherwise, render_gametext will draw the history + a .pending_text span 
@@ -20749,7 +20751,9 @@ Current version indicated by LITEVER below.
 				target_idx: gametext_arr.length, 
 				active_idx: 0,
 				versions: new Array(count).fill(""),
-				models: new Array(count).fill("")
+				models: new Array(count).fill(""),
+				prefix: pending_context_preinjection,
+				suffix: pending_context_postinjection
 			};
 			if (count > 1) {
 				gametext_arr.push(""); // Reserve the spot in history for switcher and content
@@ -22050,12 +22054,14 @@ Current version indicated by LITEVER below.
 			gentxt = gentxt.replace(/[\t\r\n ]+$/, '');
 		}
 
+		let clean_raw_text = gentxt;
 		let gentxtspeak = gentxt;
 		if (pending_context_preinjection != "") {
 			if(gentxt!="" && gentxt[0]!=" " && (localsettings.opmode==3 || (localsettings.opmode==4 && localsettings.inject_chatnames_instruct && !localsettings.inject_jailbreak_instruct && localsettings.think_injected==0)))
 			{
 				//if the response doesnt come with a space, add one in chat
 				gentxt = " " +gentxt;
+				clean_raw_text = " " + clean_raw_text; 
 			}
 			gentxt = pending_context_preinjection + gentxt;
 			pending_context_preinjection = "";
@@ -22099,7 +22105,7 @@ Current version indicated by LITEVER below.
 			// ------ START Parallel Versions ------
 			// If we have a reserved parallel slot, update it instead of pushing
 			if (parallel_draft_data && gametext_arr[parallel_draft_data.target_idx] !== undefined) {
-				parallel_draft_data.versions[parallel_draft_data.active_idx] = gentxt;
+				parallel_draft_data.versions[parallel_draft_data.active_idx] = clean_raw_text;
 				gametext_arr[parallel_draft_data.target_idx] = gentxt;
 			} else {
 				gametext_arr.push(gentxt); 
