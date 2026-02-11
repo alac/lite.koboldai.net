@@ -13078,7 +13078,7 @@ Current version indicated by LITEVER below.
 		if (active_requests_count <= 0) {
 			let target = parallel_draft_data.target_idx;
 			if (gametext_arr[target] !== undefined) {
-				let raw = parallel_draft_data.versions[new_idx] || "";
+				let raw = parallel_draft_data.versions[new_idx] || "[EMPTY MESSAGE]";
 				let wrapped = (parallel_draft_data.prefix || "") + raw + (parallel_draft_data.suffix || "");
 				gametext_arr[target] = wrapped;
 			}

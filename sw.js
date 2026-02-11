@@ -1,6 +1,6 @@
 console.log("Service worker is active - should enable PWA functionality");
 
-const cacheName = 'kobold-af3f0a99'; // Change value to force update
+const cacheName = 'kobold-fa276290'; // Change value to force update
 
 self.addEventListener("install", event => {
 	// Kick out the old service worker
