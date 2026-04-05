@@ -27129,6 +27129,8 @@ Current version indicated by LITEVER below.
 
 		for(var i=0;i<chatunits.length;++i)
 		{
+			let curr = chatunits[i];
+
 			// In Aesthetic mode, we associate the switcher with the turn 
 			// that corresponds to our target index. 
 			// Note: repack logic indices may vary, but target_idx aligns with 
@@ -27136,27 +27138,45 @@ Current version indicated by LITEVER below.
 			let turn_switcher_html = "";
 			let pre_turn_switcher_html = "";
 			let post_turn_switcher_html = "";
-			
-			// Locate the floating dock for Aesthetic UI
-			let dock = document.getElementById("parallel_switcher_dock_aesthetic");
-			if (dock) dock.classList.add("hidden");
 
-			if (!isPreview && parallel_draft_data  && localsettings.parallel_count > 1 && i === chatunits.length - 1 && !chatunits[i].myturn) {
-				turn_switcher_html = generate_version_switcher_html();
+			// 1. Locate the floating dock for Aesthetic UI
+			let dock = document.getElementById("parallel_switcher_dock_aesthetic");
+			
+			// 2. Clear the dock on the first iteration so it doesn't get stuck open on old turns
+			if (dock && i === 0) {
+				dock.classList.add("hidden");
+				dock.innerHTML = "";
+			}
+
+			// 3. Process the Parallel Switcher for the active AI turn
+			if (!isPreview && parallel_draft_data && localsettings.parallel_count > 1 && i === chatunits.length - 1 && !chatunits[i].myturn) {
 				
-				if (localsettings.opmode == 1) {
-					// STORY MODE: Do not inject buttons into the text bubble. Use the floating dock.
-					if (dock) {
-						dock.innerHTML = turn_switcher_html;
-						dock.classList.remove("hidden");
-					}
-					// Apply a subtle highlight to the text so the user knows what is being swapped
-					curr.msg = `<span style="background-color: rgba(0, 255, 255, 0.15); border-radius: 3px; display: inline-block;">${curr.msg}</span>`;
+				// Send buttons ONLY to the dock (Leaves pre/post inline HTML empty!)
+				if (dock) {
+					dock.innerHTML = generate_version_switcher_html();
+					dock.classList.remove("hidden");
+				}
+
+				// Apply a subtle cyan highlight to the text so you can see what changes when clicking versions
+				if (curr.add_stream_msg) {
+					// While generating (Streaming)
+					curr.add_stream_msg = `<span style="background-color: rgba(0, 255, 255, 0.15); border-radius: 3px; display: block; padding: 2px;">${curr.add_stream_msg}</span>`;
 				} else {
-					// CHAT/INSTRUCT MODE: Inject the buttons directly into the chat bubble 
-					// (You can move this to the dock as well by removing this 'else' block)
-					pre_turn_switcher_html = turn_switcher_html + "<hr>";
-					post_turn_switcher_html = "<hr>" + turn_switcher_html;
+					// When generation is done
+					let target_text = parallel_draft_data.versions[parallel_draft_data.active_idx] || "";
+					
+					if (localsettings.opmode == 1 && target_text.trim() !== "") {
+						// STORY MODE: Because history is one giant string, we must find and highlight the LAST occurrence
+						let lastIndex = curr.msg.lastIndexOf(target_text);
+						if (lastIndex !== -1) {
+							curr.msg = curr.msg.substring(0, lastIndex) + 
+									   `<span style="background-color: rgba(0, 255, 255, 0.15); border-radius: 3px; display: inline-block;">${target_text}</span>` + 
+									   curr.msg.substring(lastIndex + target_text.length);
+						}
+					} else {
+						// CHAT/INSTRUCT MODE: Highlight the whole bubble
+						curr.msg = `<span style="background-color: rgba(0, 255, 255, 0.15); border-radius: 3px; display: block; padding: 2px;">${curr.msg}</span>`;
+					}
 				}
 			}
 
@@ -27179,8 +27199,6 @@ Current version indicated by LITEVER below.
 
 			// Apply "Ghosting" opacity if i <= cutoff_index
 			let opacityStyle = (i <= cutoff_index) ? "opacity: 0.5;" : "";
-
-			let curr = chatunits[i];
 
 			//for aesthetic mode, use fancy quotes, but we must exclude anything in codeblocks, and html tags
 			let temphtmlstash = [];
