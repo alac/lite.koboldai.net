@@ -27199,6 +27199,9 @@ Current version indicated by LITEVER below.
 
 			// Apply "Ghosting" opacity if i <= cutoff_index
 			let opacityStyle = (i <= cutoff_index) ? "opacity: 0.5;" : "";
+			if (localsettings.opmode == 1) {
+				opacityStyle = "";
+			}
 
 			//for aesthetic mode, use fancy quotes, but we must exclude anything in codeblocks, and html tags
 			let temphtmlstash = [];
