@@ -23967,13 +23967,19 @@ Current version indicated by LITEVER below.
 			} else {
 				// Build Classic text with Switcher injection
 				fulltxt = "";
+				let dock = document.getElementById("parallel_switcher_dock");
+				dock.classList.add("hidden"); // Hide by default
+
 				for (let i = 0; i < gametext_arr.length; i++) {
 					let chunk = escape_html(gametext_arr[i]);
 					
-					// If this is the turn with versions, wrap it and add the switcher
 					if (parallel_draft_data && i === parallel_draft_data.target_idx && localsettings.parallel_count > 1) {
-						let switcher = generate_version_switcher_html();
-						fulltxt += switcher + `%SpnStg%` + chunk + `%SpnEtg%`;
+						// 1. Send the buttons to the UI dock instead of the text
+						dock.innerHTML = generate_version_switcher_html();
+						dock.classList.remove("hidden");
+
+						// 2. Wrap the text in a subtle highlight so the user knows what is changing
+						fulltxt += `%SpnStg%<span style="background-color: rgba(0, 255, 255, 0.15); border-radius: 3px;">` + chunk + `</span>%SpnEtg%`;
 					} else {
 						fulltxt += `%SpnStg%` + chunk + `%SpnEtg%`;
 					}
@@ -27130,10 +27136,28 @@ Current version indicated by LITEVER below.
 			let turn_switcher_html = "";
 			let pre_turn_switcher_html = "";
 			let post_turn_switcher_html = "";
+			
+			// Locate the floating dock for Aesthetic UI
+			let dock = document.getElementById("parallel_switcher_dock_aesthetic");
+			if (dock) dock.classList.add("hidden");
+
 			if (!isPreview && parallel_draft_data  && localsettings.parallel_count > 1 && i === chatunits.length - 1 && !chatunits[i].myturn) {
 				turn_switcher_html = generate_version_switcher_html();
-				pre_turn_switcher_html = turn_switcher_html + "<hr>"
-				post_turn_switcher_html = "<hr>" + turn_switcher_html
+				
+				if (localsettings.opmode == 1) {
+					// STORY MODE: Do not inject buttons into the text bubble. Use the floating dock.
+					if (dock) {
+						dock.innerHTML = turn_switcher_html;
+						dock.classList.remove("hidden");
+					}
+					// Apply a subtle highlight to the text so the user knows what is being swapped
+					curr.msg = `<span style="background-color: rgba(0, 255, 255, 0.15); border-radius: 3px; display: inline-block;">${curr.msg}</span>`;
+				} else {
+					// CHAT/INSTRUCT MODE: Inject the buttons directly into the chat bubble 
+					// (You can move this to the dock as well by removing this 'else' block)
+					pre_turn_switcher_html = turn_switcher_html + "<hr>";
+					post_turn_switcher_html = "<hr>" + turn_switcher_html;
+				}
 			}
 
 			// INSERT SUMMARY BOOKMARK
@@ -27143,8 +27167,14 @@ Current version indicated by LITEVER below.
 			}
 
 			// INSERT CONTEXT HORIZON
-			if (i == cutoff_index + 1) { // +1 because cutoff_index is the first one OUT, so this is the start of IN
-				newbodystr += `<div style="width:100%; text-align:center; border-bottom: 2px dashed #ff4444; color: #ff4444; margin: 10px 0; font-size: 0.8em;">--- Context Limit Horizon ---</div>`;
+			if (i == cutoff_index + 1) {
+				if (localsettings.opmode == 1) {
+					// Story Mode: Use a subtle inline indicator so sentences don't break
+					newbodystr += `<span style="border-left: 2px dashed #ff4444; margin-left: 2px; padding-left: 2px;" title="Context Limit Horizon"></span>`;
+				} else {
+					// Chat/Instruct Mode: Use the full block divider
+					newbodystr += `<div style="width:100%; text-align:center; border-bottom: 2px dashed #ff4444; color: #ff4444; margin: 10px 0; font-size: 0.8em;">--- Context Limit Horizon ---</div>`;
+				}
 			}
 
 			// Apply "Ghosting" opacity if i <= cutoff_index
@@ -28104,6 +28134,9 @@ Current version indicated by LITEVER below.
 				<div class="box-label"><label for="allowediting">Allow Editing</label></div>
 			</div>
 		</div>
+		<div id="parallel_switcher_dock" class="hidden" style="padding: 5px; text-align: center; background: var(--theme_color_input_bg); border-radius: 5px; margin-bottom: 5px;">
+			<!-- Switcher goes here -->
+		</div>
 		<div class="">
 			<div id="inputrow">
 				<div style="position: relative;	padding-right: 0px; padding-right: 4px;">
@@ -28156,6 +28189,7 @@ Current version indicated by LITEVER below.
 				</div>
 
 				<div class="cht_inp_hold_outer">
+					<div id="parallel_switcher_dock_aesthetic" class="hidden" style="padding: 5px; text-align: center; background: var(--theme_color_input_bg); border-radius: 5px; margin-bottom: 5px;"></div>
 					<div class="cht_inp_hold">
 					<button title="Show Groupchat Selection" onclick="show_groupchat_select()" id="chat_btnmode_chat" class="chat_btnmode_chat hidden mainnav" type="button"></button>
 					<button title="Toggle Adventure Mode" onclick="btn_adventure_mode()" id="chat_btnmode_adventure" class="chat_btnmode_adventure actionmode hidden mainnav" type="button"></button>
