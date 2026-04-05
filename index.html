@@ -13100,23 +13100,49 @@ Current version indicated by LITEVER below.
 	function generate_version_switcher_html() {
 		if (!parallel_draft_data) return "";
 
-		let html = `<div class="version-switcher unselectable">`;
-		for (let i = 0; i < parallel_draft_data.versions.length; i++) {
-			let isActive = (i === parallel_draft_data.active_idx);
+		let total = parallel_draft_data.versions.length;
+		let completed = total - active_requests_count;
+		let active_idx = parallel_draft_data.active_idx;
+
+		let html = `<div class="version-switcher unselectable" style="display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 5px;">`;
+		
+		// [<< Prev] Button
+		html += `<button type="button" class="btn btn-primary" style="padding: 4px 10px; font-weight: bold;" onclick="cycle_parallel_version(-1)" title="Previous Draft">◀</button>`;
+		
+		// [Dropdown of Models]
+		html += `<select class="form-control" style="width: auto; max-width: 250px; height: 30px; padding: 2px 6px; font-size: 13px;" onchange="switch_parallel_version(parseInt(this.value))">`;
+		for (let i = 0; i < total; i++) {
 			let isStreaming = (request_slots[i] && request_slots[i].status === "streaming");
-			let btnClass = `version-btn${isActive ? " active" : ""}${isStreaming ? " streaming" : ""}`;
-			
-			// Truncate model name if it's too long (e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini")
 			let fullModelName = parallel_draft_data.models[i] || "";
-			let shortName = fullModelName.split('/').pop(); // Take last part of path
-
-			let label = `V${i + 1}${shortName ? "|" + shortName : ""}`;
+			let shortName = fullModelName.split('/').pop() || "Unknown Model";
+			
+			let label = `V${i + 1} | ${shortName}`;
 			if (isStreaming) label += " (Typing...)";
-
-			html += `<button type="button" class="${btnClass}" onclick="switch_parallel_version(${i})">${label}</button>`;
+			
+			let selected = (i === active_idx) ? "selected" : "";
+			html += `<option value="${i}" ${selected}>${escape_html(label)}</option>`;
 		}
+		html += `</select>`;
+		
+		// [Next >>] Button
+		html += `<button type="button" class="btn btn-primary" style="padding: 4px 10px; font-weight: bold;" onclick="cycle_parallel_version(1)" title="Next Draft">▶</button>`;
+		
+		// [Counter / Status]
+		if (active_requests_count > 0) {
+			html += `<span style="font-size: 13px; font-weight: bold; color: var(--theme_color_text); white-space: nowrap; padding: 0 4px;" title="${active_requests_count} request(s) still generating">🕒 ${completed}/${total}</span>`;
+		} else {
+			html += `<span style="font-size: 13px; font-weight: bold; color: #00ff00; white-space: nowrap; padding: 0 4px;" title="All generations complete">✔️ ${total}/${total}</span>`;
+		}
+		
 		html += `</div>`;
 		return html;
+	}
+	function cycle_parallel_version(dir) {
+		if (!parallel_draft_data) return;
+		let len = parallel_draft_data.versions.length;
+		// Add 'len' before modulo to handle negative wrap-around correctly in JS
+		let new_idx = (parallel_draft_data.active_idx + dir + len) % len;
+		switch_parallel_version(new_idx);
 	}
 	function toggle_manual_horde_worker()
 	{
