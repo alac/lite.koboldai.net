@@ -7924,16 +7924,25 @@ Current version indicated by LITEVER below.
 						else if (event.data && event.data.choices && event.data.choices.length > 0) {
 							let delta = event.data.choices[0].delta;
 							if (delta) {
-								if (delta.content !== undefined && delta.content !== null) {
+								let reasoning_text = delta.reasoning_content || delta.reasoning || "";
+								let content_text = delta.content || ""; // Falls back to empty string if null/undefined
+
+								// 1. Process Reasoning First
+								if (reasoning_text) {
+									streaming_was_thinking = true;
+									token += reasoning_text;
+								}
+
+								// 2. Process Content Second
+								// Note: By checking if (content_text), we ignore empty strings ("")
+								if (content_text) {
 									if (streaming_was_thinking) {
-										// Mark the transition point based on current buffer length
-										thinking_end_idx = get_slot_text(slot_idx).length;
+										// Mark transition point. 
+										// We add token.length in case reasoning and content came in the SAME chunk
+										thinking_end_idx = get_slot_text(slot_idx).length + token.length;
 										streaming_was_thinking = false;
 									}
-									token = delta.content;
-								} else if (delta.reasoning_content || delta.reasoning) {
-									streaming_was_thinking = true;
-									token = delta.reasoning_content || delta.reasoning;
+									token += content_text;
 								}
 							}
 
