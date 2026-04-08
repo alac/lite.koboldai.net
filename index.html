@@ -13101,7 +13101,6 @@ Current version indicated by LITEVER below.
 		if (!parallel_draft_data) return "";
 
 		let total = parallel_draft_data.versions.length;
-		let completed = total - active_requests_count;
 		let active_idx = parallel_draft_data.active_idx;
 
 		let html = `<div class="version-switcher unselectable" style="display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 5px;">`;
@@ -13127,12 +13126,19 @@ Current version indicated by LITEVER below.
 		// [Next >>] Button
 		html += `<button type="button" class="btn btn-primary" style="padding: 4px 10px; font-weight: bold;" onclick="cycle_parallel_version(1)" title="Next Draft">▶</button>`;
 		
-		// [Counter / Status]
+		//[Counter / Status]
+		let iconsHtml = "";
+		for (let i = 0; i < total; i++) {
+			let isDone = (active_requests_count <= 0) || (request_slots[i] && request_slots[i].status === "done");
+			iconsHtml += isDone ? "✔️ " : "🕒 ";
+		}
+		iconsHtml = iconsHtml.trim();
+
 		if (active_requests_count > 0) {
 			let timeStr = get_time_taken() + "s";
-			html += `<span class="parallel_status_counter" style="font-size: 13px; font-weight: bold; color: var(--theme_color_text); white-space: nowrap; padding: 0 4px;" title="${active_requests_count} request(s) still generating">🕒 ${completed}/${total} (${timeStr})</span>`;
+			html += `<span class="parallel_status_counter" style="font-size: 13px; font-weight: bold; color: var(--theme_color_text); white-space: nowrap; padding: 0 4px;" title="${active_requests_count} request(s) still generating">${iconsHtml} (${timeStr})</span>`;
 		} else {
-			html += `<span class="parallel_status_counter" style="font-size: 13px; font-weight: bold; color: #00ff00; white-space: nowrap; padding: 0 4px;" title="All generations complete">✔️ ${total}/${total}</span>`;
+			html += `<span class="parallel_status_counter" style="font-size: 13px; font-weight: bold; color: #00ff00; white-space: nowrap; padding: 0 4px;" title="All generations complete">${iconsHtml}</span>`;
 		}
 		
 		html += `</div>`;
@@ -13150,9 +13156,14 @@ Current version indicated by LITEVER below.
 			let counters = document.querySelectorAll(".parallel_status_counter");
 			if (counters.length > 0) {
 				let total = parallel_draft_data.versions.length;
-				let completed = total - active_requests_count;
 				let timeStr = get_time_taken() + "s";
-				let innerHTML = `🕒 ${completed}/${total} (${timeStr})`;
+				let iconsHtml = "";
+				for (let j = 0; j < total; j++) {
+					let isDone = (request_slots[j] && request_slots[j].status === "done");
+					iconsHtml += isDone ? "✔️ " : "🕒 ";
+				}
+				iconsHtml = iconsHtml.trim();
+				let innerHTML = `${iconsHtml} (${timeStr})`;
 				let titleStr = `${active_requests_count} request(s) still generating`;
 				counters.forEach(c => {
 					c.innerHTML = innerHTML;
