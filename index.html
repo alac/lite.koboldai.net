@@ -13120,7 +13120,7 @@ Current version indicated by LITEVER below.
 			if (isStreaming) label += " (Typing...)";
 			
 			let selected = (i === active_idx) ? "selected" : "";
-			html += `<option value="${i}" ${selected}>${escape_html(label)}</option>`;
+			html += `<option class="parallel_opt_${i}" value="${i}" ${selected}>${escape_html(label)}</option>`;
 		}
 		html += `</select>`;
 		
@@ -13129,9 +13129,10 @@ Current version indicated by LITEVER below.
 		
 		// [Counter / Status]
 		if (active_requests_count > 0) {
-			html += `<span style="font-size: 13px; font-weight: bold; color: var(--theme_color_text); white-space: nowrap; padding: 0 4px;" title="${active_requests_count} request(s) still generating">🕒 ${completed}/${total}</span>`;
+			let timeStr = get_time_taken() + "s";
+			html += `<span class="parallel_status_counter" style="font-size: 13px; font-weight: bold; color: var(--theme_color_text); white-space: nowrap; padding: 0 4px;" title="${active_requests_count} request(s) still generating">🕒 ${completed}/${total} (${timeStr})</span>`;
 		} else {
-			html += `<span style="font-size: 13px; font-weight: bold; color: #00ff00; white-space: nowrap; padding: 0 4px;" title="All generations complete">✔️ ${total}/${total}</span>`;
+			html += `<span class="parallel_status_counter" style="font-size: 13px; font-weight: bold; color: #00ff00; white-space: nowrap; padding: 0 4px;" title="All generations complete">✔️ ${total}/${total}</span>`;
 		}
 		
 		html += `</div>`;
@@ -13143,6 +13144,35 @@ Current version indicated by LITEVER below.
 		// Add 'len' before modulo to handle negative wrap-around correctly in JS
 		let new_idx = (parallel_draft_data.active_idx + dir + len) % len;
 		switch_parallel_version(new_idx);
+	}
+	function update_parallel_switcher_in_place() {
+		if (parallel_draft_data && active_requests_count > 0) {
+			let counters = document.querySelectorAll(".parallel_status_counter");
+			if (counters.length > 0) {
+				let total = parallel_draft_data.versions.length;
+				let completed = total - active_requests_count;
+				let timeStr = get_time_taken() + "s";
+				let innerHTML = `🕒 ${completed}/${total} (${timeStr})`;
+				let titleStr = `${active_requests_count} request(s) still generating`;
+				counters.forEach(c => {
+					c.innerHTML = innerHTML;
+					c.title = titleStr;
+				});
+			}
+			for (let i = 0; i < parallel_draft_data.versions.length; i++) {
+				let opts = document.querySelectorAll(`.parallel_opt_${i}`);
+				if (opts.length > 0) {
+					let isStreaming = (request_slots[i] && request_slots[i].status === "streaming");
+					let fullModelName = parallel_draft_data.models[i] || "";
+					let shortName = fullModelName.split('/').pop() || "Unknown Model";
+					let label = `V${i + 1} | ${shortName}`;
+					if (isStreaming) label += " (Typing...)";
+					opts.forEach(opt => {
+						opt.innerText = label;
+					});
+				}
+			}
+		}
 	}
 	function toggle_manual_horde_worker()
 	{
@@ -23120,6 +23150,7 @@ Current version indicated by LITEVER below.
 	function poll_pending_response()
 	{
 		++poll_ticks_passed;
+		update_parallel_switcher_in_place();
 
 		//for horde requests, slow down by 3 times unless almost done
 		if(!is_using_custom_ep() && (horde_poll_nearly_completed?(poll_ticks_passed%2!=0):(poll_ticks_passed%3!=0)))
@@ -23757,7 +23788,7 @@ Current version indicated by LITEVER below.
 		} else {
 			render_gametext(false);
 		}
-
+		update_parallel_switcher_in_place();
 		handle_autoscroll(false);
 	}
 
