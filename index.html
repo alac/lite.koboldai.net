@@ -13130,7 +13130,8 @@ Current version indicated by LITEVER below.
 		let iconsHtml = "";
 		for (let i = 0; i < total; i++) {
 			let isDone = (active_requests_count <= 0) || (request_slots[i] && request_slots[i].status === "done");
-			iconsHtml += isDone ? "✔️ " : "🕒 ";
+			let icon = isDone ? "✔️" : "🕒";
+			iconsHtml += (i === active_idx) ? `[${icon}] ` : `${icon} `;
 		}
 		iconsHtml = iconsHtml.trim();
 
@@ -13156,11 +13157,13 @@ Current version indicated by LITEVER below.
 			let counters = document.querySelectorAll(".parallel_status_counter");
 			if (counters.length > 0) {
 				let total = parallel_draft_data.versions.length;
+				let active_idx = parallel_draft_data.active_idx;
 				let timeStr = get_time_taken() + "s";
 				let iconsHtml = "";
 				for (let j = 0; j < total; j++) {
 					let isDone = (request_slots[j] && request_slots[j].status === "done");
-					iconsHtml += isDone ? "✔️ " : "🕒 ";
+					let icon = isDone ? "✔️" : "🕒";
+					iconsHtml += (j === active_idx) ? `[${icon}] ` : `${icon} `;
 				}
 				iconsHtml = iconsHtml.trim();
 				let innerHTML = `${iconsHtml} (${timeStr})`;
