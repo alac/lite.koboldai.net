@@ -23923,6 +23923,11 @@ Current version indicated by LITEVER below.
 		}
 		populate_corpo_leftpanel_topper();
 
+		let jumpButtonHtml = "";
+		if (gametext_arr.length > 4 && !inEditMode) {
+			jumpButtonHtml = `<div style="text-align: center; margin: 15px 0;"><button type="button" class="btn btn-primary" onclick="let b1=document.getElementById('gametext'); if(b1)b1.scrollTop=b1.scrollHeight; let b2=document.getElementById('chat_msg_body'); if(b2)b2.scrollTop=b2.scrollHeight; let b3=document.getElementById('corpostylemain'); if(b3)b3.scrollTop=b3.scrollHeight;">⬇️ Jump to Bottom ⬇️</button></div>`;
+		}
+
 		if (gametext_arr.length == 0 && synchro_pending_stream=="" && pending_response_id=="") {
 
 			if (perfdata == null) {
@@ -24211,7 +24216,7 @@ Current version indicated by LITEVER below.
 			{
 				fulltxt = "Generating...";
 			}
-			document.getElementById("gametext").innerHTML = fulltxt;
+			document.getElementById("gametext").innerHTML = jumpButtonHtml + fulltxt;
 		}
 
 		if(localflag && is_using_kcpp_with_admin())
@@ -24350,7 +24355,7 @@ Current version indicated by LITEVER below.
 			else
 			{
 				let textToRender = concat_gametext(false, "", "", "", true);
-				document.getElementById("corpo_body").innerHTML = render_corpo_ui(textToRender);
+				document.getElementById("corpo_body").innerHTML = jumpButtonHtml + render_corpo_ui(textToRender);
 				corpoedit_resize_input();
 			}
 
@@ -24375,7 +24380,7 @@ Current version indicated by LITEVER below.
 				}
 				else
 				{
-					document.getElementById("chat_msg_body").innerHTML = render_aesthetic_ui(textToRender,false);
+					document.getElementById("chat_msg_body").innerHTML = jumpButtonHtml + render_aesthetic_ui(textToRender,false);
 				}
 			}
 
